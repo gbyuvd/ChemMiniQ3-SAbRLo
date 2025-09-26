@@ -2,6 +2,8 @@
 #  RL_UTILS.PY
 #  Chemistry RL Training Utilities for ChemQ3-MTP
 #  by gbyuvd
+#  Patched: reward normalization, KL/entropy reset per phase,
+#           entropy target annealing, and symmetric curriculum (kept old naming).
 # ========================
 
 import torch
@@ -288,231 +290,164 @@ def selfies_to_lipinski_reward(selfies_str: str) -> float:
 # ========================
 
 class AdaptiveKLController:
-    """
-    Adaptive KL divergence controller for PPO training.
-    Increases or decreases β so that E[KL] stays ≈ target_kl.
-    """
-    
-    def __init__(
-        self, 
-        init_kl_coef: float = 0.1, 
-        target_kl: float = 0.01,
-        kl_horizon: int = 1000, 
-        increase_rate: float = 1.5, 
-        decrease_rate: float = 0.8
-    ):
-        self.kl_coef = init_kl_coef
-        self.target_kl = target_kl
-        self.kl_horizon = kl_horizon
-        self.inc = increase_rate
-        self.dec = decrease_rate
-        self.buffer = []
+    def __init__(self, init_kl_coef: float = 0.1, target_kl: float = 0.01,
+                 kl_horizon: int = 200, increase_rate: float = 2.0,
+                 decrease_rate: float = 0.7):
+        self.kl_coef = float(init_kl_coef)
+        self.target_kl = float(target_kl)
+        self.kl_horizon = int(kl_horizon)
+        self.inc = float(increase_rate)
+        self.dec = float(decrease_rate)
+        self.buffer: List[float] = []
 
     def update(self, kl: float) -> float:
-        """Update KL coefficient based on observed KL divergence."""
-        self.buffer.append(kl)
-        
+        self.buffer.append(float(kl))
         if len(self.buffer) >= self.kl_horizon:
             avg_kl = sum(self.buffer) / len(self.buffer)
             self.buffer.clear()
-            
             if avg_kl > self.target_kl * 1.5:
                 self.kl_coef *= self.inc
-                print(f"KL too high ({avg_kl:.4f}), increasing β to {self.kl_coef:.4f}")
+                print(f"KL too high ({avg_kl:.6f}), increasing β to {self.kl_coef:.6f}")
             elif avg_kl < self.target_kl * 0.5:
                 self.kl_coef *= self.dec
-                print(f"KL too low ({avg_kl:.4f}), decreasing β to {self.kl_coef:.4f}")
-                
+                print(f"KL too low ({avg_kl:.6f}), decreasing β to {self.kl_coef:.6f}")
         return self.kl_coef
 
+    def reset(self):
+        self.buffer.clear()
+
+
 class EnhancedEntropyController:
-    """
-    Enhanced entropy controller with dynamic targets and temperature scheduling.
-    """
-    
-    def __init__(
-        self, 
-        min_entropy: float = 0.5, 
-        max_entropy: float = 3.0,
-        target_entropy: float = 1.5, 
-        adaptation_rate: float = 0.01
-    ):
+    def __init__(self, min_entropy: float = 0.5, max_entropy: float = 3.0,
+                 target_entropy: float = 1.5):
         self.min_entropy = min_entropy
         self.max_entropy = max_entropy
         self.target_entropy = target_entropy
-        self.adaptation_rate = adaptation_rate
-        self.entropy_history = []
-        self.entropy_weight = 0.01  # Starting weight
-        
+        self.entropy_history: List[float] = []
+        self.entropy_weight = 0.01
+
     def update_entropy_weight(self, current_entropy: float) -> float:
-        """Dynamically adjust entropy weight based on current entropy levels."""
-        self.entropy_history.append(current_entropy)
-        
-        # Keep rolling window
+        self.entropy_history.append(float(current_entropy))
         if len(self.entropy_history) > 100:
             self.entropy_history = self.entropy_history[-100:]
-            
         if len(self.entropy_history) >= 10:
             avg_entropy = np.mean(self.entropy_history[-10:])
-            
-            # If entropy too low, increase weight to encourage exploration
             if avg_entropy < self.target_entropy * 0.8:
                 self.entropy_weight = min(0.05, self.entropy_weight * 1.1)
-            # If entropy too high, decrease weight
             elif avg_entropy > self.target_entropy * 1.2:
                 self.entropy_weight = max(0.001, self.entropy_weight * 0.95)
-                
-        return self.entropy_weight
-    
-    def compute_entropy_reward(self, entropy: float) -> float:
-        """Reward function for entropy - prefer target range."""
-        if self.min_entropy <= entropy <= self.max_entropy:
-            # Gaussian reward centered at target
-            distance = abs(entropy - self.target_entropy)
-            max_distance = max(
-                self.target_entropy - self.min_entropy, 
-                self.max_entropy - self.target_entropy
-            )
-            return np.exp(-(distance / max_distance) ** 2)
-        else:
-            return 0.1  # Small penalty for being outside range
+        return float(self.entropy_weight)
+
+    def adjust_for_seq_len(self, seq_len: int, base_entropy: float = 1.5):
+        seq_len = max(1, int(seq_len))
+        self.target_entropy = float(base_entropy * np.log1p(seq_len) / np.log1p(10))
+        self.target_entropy = float(np.clip(self.target_entropy, self.min_entropy, self.max_entropy))
+
+    def reset(self):
+        self.entropy_history.clear()
+        self.entropy_weight = 0.01
+
 
 class CurriculumManager:
-    """
-    Curriculum learning manager for progressive training.
-    Gradually increases max_new_tokens from start_len → max_len, then cycles.
-    """
-    
-    def __init__(
-        self, 
-        start_len: int = 10, 
-        max_len: int = 30, 
-        step_increase: int = 5, 
-        steps_per_level: int = 30
-    ):
+    """Symmetric curriculum: 10→15→20→25→20→15→10→..."""
+    def __init__(self, start_len: int = 10, max_len: int = 25,
+                 step_increase: int = 5, steps_per_level: int = 30):
         self.start_len = start_len
         self.max_len = max_len
         self.step_increase = step_increase
         self.steps_per_level = steps_per_level
-        self.step_counter = 0
         self.current_max_len = start_len
+        self.step_counter = 0
+        self.direction = +1
 
     def get_max_new_tokens(self) -> int:
-        """Get current maximum new tokens."""
         return self.current_max_len
 
     def step(self) -> int:
-        """Update curriculum and return new max_new_tokens."""
         self.step_counter += 1
-        
         if self.step_counter % self.steps_per_level == 0:
-            if self.current_max_len < self.max_len:
-                self.current_max_len = min(
-                    self.current_max_len + self.step_increase, 
-                    self.max_len
-                )
+            if self.direction == +1:
+                if self.current_max_len < self.max_len:
+                    self.current_max_len += self.step_increase
+                else:
+                    self.direction = -1
+                    self.current_max_len -= self.step_increase
             else:
-                # Reset cycle
-                self.current_max_len = self.start_len
-                print(f"🔄 Cycle reset: max_new_tokens -> {self.current_max_len}")
-                
-            if self.current_max_len < self.max_len:
-                print(f"📈 Curriculum Update: max_new_tokens = {self.current_max_len}")
-                
+                if self.current_max_len > self.start_len:
+                    self.current_max_len -= self.step_increase
+                else:
+                    self.direction = +1
+                    self.current_max_len += self.step_increase
+            print(f"📈 Curriculum Update: max_new_tokens = {self.current_max_len}")
         return self.current_max_len
 
 # ========================
-# PPO TRAINING UTILITIES
+# HELPERS
 # ========================
 
-def compute_ppo_loss(
-    old_log_probs: torch.Tensor,
-    new_log_probs: torch.Tensor,
-    rewards: torch.Tensor,
-    clip_epsilon: float = 0.2,
-    baseline: Optional[torch.Tensor] = None
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Compute PPO clipped loss with numerical stability (improved version).
-    Note: This function computes the PPO surrogate loss only.
-    The KL penalty should be computed separately and added to the total loss
-    in your training loop using the KL coefficient (beta).
-    
-    Args:
-        old_log_probs: Log probabilities from old policy [B, T]
-        new_log_probs: Log probabilities from new policy [B, T]  
-        rewards: Reward values [B] (or advantages if baseline is provided)
-        clip_epsilon: Clipping parameter
-        baseline: Optional baseline for advantage computation [B]
-        
-    Returns:
-        Tuple of (ppo_loss, advantage)
-    """
-    # Compute advantage
-    if baseline is not None:
-        advantage = rewards - baseline.detach()
+def normalize_rewards(rewards: torch.Tensor, seq_len: int, mode: str = "sqrt") -> torch.Tensor:
+    if seq_len <= 1 or mode == "none":
+        return rewards
+    if mode == "per_token":
+        return rewards / float(seq_len)
+    elif mode == "sqrt":
+        return rewards / float(np.sqrt(seq_len))
     else:
-        advantage = rewards
-    
-    # Clip advantages to prevent extreme values
-    advantage = torch.clamp(advantage, -2.0, 2.0)
-    
-    # Compute log probability ratio per step for numerical stability
-    # This avoids summing log probs first, which can lead to large exponents
-    log_ratio_per_step = new_log_probs - old_log_probs  # [B, T]
-    
-    # Clamp log ratios per step to prevent extreme ratios before exponentiating
-    log_ratio_per_step = torch.clamp(log_ratio_per_step, -5.0, 5.0)
-    
-    # Exponentiate to get the ratio per step
-    ratio_per_step = torch.exp(log_ratio_per_step)  # [B, T]
-    
-    # Calculate surrogate objectives per step
-    surr1_per_step = ratio_per_step * advantage.unsqueeze(1)  # [B, T] * [B, 1] -> [B, T]
-    surr2_per_step = torch.clamp(ratio_per_step, 1 - clip_epsilon, 1 + clip_epsilon) * advantage.unsqueeze(1) # [B, T]
-    
-    # Take the minimum per step, sum over the sequence length for each example, then average over the batch
-    ppo_loss_per_example = -torch.min(surr1_per_step, surr2_per_step).sum(dim=1) # [B, T] -> [B]
-    ppo_loss = ppo_loss_per_example.mean() # scalar
-    
+        raise ValueError(f"Unknown normalization mode: {mode}")
+
+
+def reset_controllers_on_phase_change(prev_len: Optional[int], new_len: int,
+                                      kl_controller: Optional[AdaptiveKLController] = None,
+                                      entropy_controller: Optional[EnhancedEntropyController] = None,
+                                      entropy_base: float = 1.5):
+    if prev_len is None or prev_len == new_len:
+        return
+    if kl_controller is not None:
+        kl_controller.reset()
+    if entropy_controller is not None:
+        entropy_controller.reset()
+        entropy_controller.adjust_for_seq_len(new_len, base_entropy=entropy_base)
+
+
+# ========================
+# PPO LOSS
+# ========================
+
+def compute_ppo_loss(old_log_probs: torch.Tensor, new_log_probs: torch.Tensor,
+                     rewards: torch.Tensor, clip_epsilon: float = 0.2,
+                     baseline: Optional[torch.Tensor] = None,
+                     seq_len: int = 1, reward_norm: str = "sqrt",
+                     adv_clip: Optional[float] = None) -> Tuple[torch.Tensor, torch.Tensor]:
+    normed_rewards = normalize_rewards(rewards, seq_len, mode=reward_norm)
+    if baseline is not None:
+        advantage = normed_rewards - baseline.detach()
+    else:
+        advantage = normed_rewards
+    if adv_clip is not None:
+        advantage = torch.clamp(advantage, -float(adv_clip), float(adv_clip))
+    else:
+        default_clip = 2.0 * np.sqrt(max(1, seq_len))
+        advantage = torch.clamp(advantage, -default_clip, default_clip)
+    log_ratio = torch.clamp(new_log_probs - old_log_probs, -10.0, 10.0)
+    ratio = torch.exp(log_ratio)
+    adv_expanded = advantage.unsqueeze(1) if advantage.dim() == 1 else advantage
+    surr1 = ratio * adv_expanded
+    surr2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * adv_expanded
+    ppo_loss = -torch.min(surr1, surr2).sum(dim=1).mean()
     return ppo_loss, advantage.detach()
 
-def compute_kl_divergence(
-    old_action_probs: torch.Tensor,
-    new_action_probs: torch.Tensor
-) -> torch.Tensor:
-    """
-    Compute KL divergence between old and new action distributions.
-    
-    Args:
-        old_action_probs: Old action probabilities [B, T, V]
-        new_action_probs: New action probabilities [B, T, V]
-        
-    Returns:
-        KL divergence per example [B]
-    """
+
+def compute_kl_divergence(old_action_probs: torch.Tensor, new_action_probs: torch.Tensor) -> torch.Tensor:
     old_probs = old_action_probs.clamp_min(1e-12)
     new_probs = new_action_probs.clamp_min(1e-12)
-    
-    # KL(old || new) = sum(old * log(old / new)) calculated as sum(old * (log(old) - log(new)))
-    kl_per_step = (old_probs * (torch.log(old_probs) - torch.log(new_probs))).sum(dim=-1)  # [B, T, V] -> [B, T]
-    kl_per_example = kl_per_step.sum(dim=1)  # [B, T] -> [B]
-    return kl_per_example # [B]
+    kl_per_step = (old_probs * (torch.log(old_probs) - torch.log(new_probs))).sum(dim=-1)
+    return kl_per_step.sum(dim=1)
+
 
 def compute_entropy_bonus(action_probs: torch.Tensor) -> torch.Tensor:
-    """
-    Compute entropy bonus for exploration.
-    
-    Args:
-        action_probs: Action probabilities [B, T, V]
-        
-    Returns:
-        Entropy per example [B]
-    """
     probs = action_probs.clamp_min(1e-12)
-    entropy_per_step = -(probs * torch.log(probs)).sum(dim=-1)  # [B, T, V] -> [B, T]
-    entropy_per_example = entropy_per_step.sum(dim=1) # [B, T] -> [B]
-    return entropy_per_example # [B]
+    entropy_per_step = -(probs * torch.log(probs)).sum(dim=-1)
+    return entropy_per_step.sum(dim=1)
 
 # ========================
 # BATCH REWARD COMPUTATION
