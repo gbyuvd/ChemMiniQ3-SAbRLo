@@ -433,42 +433,49 @@ def compute_ppo_loss(
     baseline: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Compute PPO clipped loss with numerical stability.
+    Compute PPO clipped loss with numerical stability (improved version).
+    Note: This function computes the PPO surrogate loss only.
+    The KL penalty should be computed separately and added to the total loss
+    in your training loop using the KL coefficient (beta).
     
     Args:
         old_log_probs: Log probabilities from old policy [B, T]
         new_log_probs: Log probabilities from new policy [B, T]  
-        rewards: Reward values [B]
+        rewards: Reward values [B] (or advantages if baseline is provided)
         clip_epsilon: Clipping parameter
         baseline: Optional baseline for advantage computation [B]
         
     Returns:
         Tuple of (ppo_loss, advantage)
     """
-    # Compute advantage with clipping
+    # Compute advantage
     if baseline is not None:
-        advantage = rewards - baseline.detach()  # Detach baseline to prevent gradient flow
+        advantage = rewards - baseline.detach()
     else:
         advantage = rewards
     
     # Clip advantages to prevent extreme values
     advantage = torch.clamp(advantage, -2.0, 2.0)
     
-    # Probability ratio with numerical stability
-    log_ratio = new_log_probs.sum(dim=1) - old_log_probs.sum(dim=1)  # [B]
-    # Clamp log ratio to prevent extreme ratios
-    log_ratio = torch.clamp(log_ratio, -5.0, 5.0)
-    ratio = torch.exp(log_ratio)
+    # Compute log probability ratio per step for numerical stability
+    # This avoids summing log probs first, which can lead to large exponents
+    log_ratio_per_step = new_log_probs - old_log_probs  # [B, T]
     
-    # Apply PPO clipping
-    surr1 = ratio * advantage
-    surr2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * advantage
-    ppo_loss = -torch.min(surr1, surr2).mean()
+    # Clamp log ratios per step to prevent extreme ratios before exponentiating
+    log_ratio_per_step = torch.clamp(log_ratio_per_step, -5.0, 5.0)
     
-    # Additional safety: clip PPO loss if it's too large
-    ppo_loss = torch.clamp(ppo_loss, -50.0, 50.0)
+    # Exponentiate to get the ratio per step
+    ratio_per_step = torch.exp(log_ratio_per_step)  # [B, T]
     
-    return ppo_loss, advantage.detach()  # Detach advantage to prevent gradient flow back to baseline
+    # Calculate surrogate objectives per step
+    surr1_per_step = ratio_per_step * advantage.unsqueeze(1)  # [B, T] * [B, 1] -> [B, T]
+    surr2_per_step = torch.clamp(ratio_per_step, 1 - clip_epsilon, 1 + clip_epsilon) * advantage.unsqueeze(1) # [B, T]
+    
+    # Take the minimum per step, sum over the sequence length for each example, then average over the batch
+    ppo_loss_per_example = -torch.min(surr1_per_step, surr2_per_step).sum(dim=1) # [B, T] -> [B]
+    ppo_loss = ppo_loss_per_example.mean() # scalar
+    
+    return ppo_loss, advantage.detach()
 
 def compute_kl_divergence(
     old_action_probs: torch.Tensor,
@@ -487,9 +494,10 @@ def compute_kl_divergence(
     old_probs = old_action_probs.clamp_min(1e-12)
     new_probs = new_action_probs.clamp_min(1e-12)
     
-    # KL(old || new) = sum(old * log(old / new))
-    kl = (old_probs * (torch.log(old_probs) - torch.log(new_probs))).sum(dim=-1)  # [B, T]
-    return kl.sum(dim=1)  # [B]
+    # KL(old || new) = sum(old * log(old / new)) calculated as sum(old * (log(old) - log(new)))
+    kl_per_step = (old_probs * (torch.log(old_probs) - torch.log(new_probs))).sum(dim=-1)  # [B, T, V] -> [B, T]
+    kl_per_example = kl_per_step.sum(dim=1)  # [B, T] -> [B]
+    return kl_per_example # [B]
 
 def compute_entropy_bonus(action_probs: torch.Tensor) -> torch.Tensor:
     """
@@ -502,8 +510,9 @@ def compute_entropy_bonus(action_probs: torch.Tensor) -> torch.Tensor:
         Entropy per example [B]
     """
     probs = action_probs.clamp_min(1e-12)
-    entropy = -(probs * torch.log(probs)).sum(dim=-1)  # [B, T]
-    return entropy.sum(dim=1)  # [B]
+    entropy_per_step = -(probs * torch.log(probs)).sum(dim=-1)  # [B, T, V] -> [B, T]
+    entropy_per_example = entropy_per_step.sum(dim=1) # [B, T] -> [B]
+    return entropy_per_example # [B]
 
 # ========================
 # BATCH REWARD COMPUTATION
