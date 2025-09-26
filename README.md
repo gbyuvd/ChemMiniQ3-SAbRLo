@@ -59,6 +59,9 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 ## Usage
 
 See `demo_usage.ipynb` or download it to use (I am still learning abt HF API so please be patient.)
+For training, clone this repo:
+Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
+Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
 
 ## 🔮 Planned Experiments & Next Steps
 
