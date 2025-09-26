@@ -10,8 +10,8 @@ import os
 import torch
 from tqdm import tqdm
 from FastChemTokenizerHF import FastChemTokenizerSelfies
-from ChemQ3MTP import ChemQ3MTPForCausalLM, CurriculumManager
-from ChemQ3MTP.rl_utils import AdaptiveKLController, batch_compute_rewards, compute_ppo_loss, compute_kl_divergence, compute_entropy_bonus
+from ChemQ3MTP import ChemQ3MTPForCausalLM 
+from ChemQ3MTP.rl_utils import CurriculumManager, AdaptiveKLController, batch_compute_rewards, compute_ppo_loss, compute_kl_divergence, compute_entropy_bonus
 
 # ... rest of your RL script
 
@@ -176,4 +176,5 @@ def main():
     print("🎉 Training complete!")
 
 if __name__ == "__main__":
+
     main()
