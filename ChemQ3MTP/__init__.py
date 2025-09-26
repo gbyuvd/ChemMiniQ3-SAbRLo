@@ -2,7 +2,7 @@
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 from .configuration_chemq3mtp import ChemQ3MTPConfig
 from .modeling_chemq3mtp import ChemQ3MTPForCausalLM
-from .FastChemTokenizerHF import FastChemTokenizerSelfies  # Add this
+from .FastChemTokenizerHF import FastChemTokenizerSelfies  
 
 # Register the model
 AutoConfig.register("chemq3_mtp", ChemQ3MTPConfig)

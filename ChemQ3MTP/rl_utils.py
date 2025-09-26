@@ -290,31 +290,67 @@ def selfies_to_lipinski_reward(selfies_str: str) -> float:
 # ========================
 
 class AdaptiveKLController:
-    def __init__(self, init_kl_coef: float = 0.1, target_kl: float = 0.01,
-                 kl_horizon: int = 200, increase_rate: float = 2.0,
-                 decrease_rate: float = 0.7):
-        self.kl_coef = float(init_kl_coef)
-        self.target_kl = float(target_kl)
-        self.kl_horizon = int(kl_horizon)
-        self.inc = float(increase_rate)
-        self.dec = float(decrease_rate)
-        self.buffer: List[float] = []
+    """
+    Adaptive KL controller with hard clipping and EMA smoothing.
+    Prevents runaway beta values and exploding KL penalties.
+    """
 
-    def update(self, kl: float) -> float:
-        self.buffer.append(float(kl))
-        if len(self.buffer) >= self.kl_horizon:
-            avg_kl = sum(self.buffer) / len(self.buffer)
-            self.buffer.clear()
-            if avg_kl > self.target_kl * 1.5:
-                self.kl_coef *= self.inc
-                print(f"KL too high ({avg_kl:.6f}), increasing β to {self.kl_coef:.6f}")
-            elif avg_kl < self.target_kl * 0.5:
-                self.kl_coef *= self.dec
-                print(f"KL too low ({avg_kl:.6f}), decreasing β to {self.kl_coef:.6f}")
-        return self.kl_coef
+    def __init__(
+        self,
+        init_kl_coef: float = 0.2,
+        target_kl: float = 6.0,
+        horizon: int = 10000,
+        max_kl_coef: float = 10.0,
+        max_inc_factor: float = 2.0,
+        ema_alpha: float = 0.9,
+        kl_penalty_cap: float = 10.0,
+    ):
+        self.value = init_kl_coef
+        self.target = target_kl
+        self.horizon = horizon
+        self.max_kl_coef = max_kl_coef
+        self.max_inc_factor = max_inc_factor
+        self.ema_alpha = ema_alpha
+        self.kl_penalty_cap = kl_penalty_cap
 
-    def reset(self):
-        self.buffer.clear()
+        # Exponential moving average of KL
+        self.ema_kl = None
+
+    def update(self, current_kl: float, n_steps: int) -> None:
+        # update EMA
+        if self.ema_kl is None:
+            self.ema_kl = current_kl
+        else:
+            self.ema_kl = (
+                self.ema_alpha * self.ema_kl + (1 - self.ema_alpha) * current_kl
+            )
+
+        proportional_error = np.clip(
+            (self.ema_kl - self.target) / self.target, -1.0, 1.0
+        )
+        mult = 1.0 + proportional_error * (n_steps / self.horizon)
+
+        # cap growth
+        if mult > self.max_inc_factor:
+            mult = self.max_inc_factor
+
+        # update beta
+        new_val = self.value * mult
+        self.value = min(new_val, self.max_kl_coef)
+
+    def __call__(self) -> float:
+        return self.value
+
+
+def compute_kl_penalty(kl_vals: torch.Tensor, kl_coef: float, kl_penalty_cap: float):
+    """
+    Compute KL penalty with clipping.
+    Returns (clipped_penalty, raw_penalty, kl_mean).
+    """
+    kl_mean = kl_vals.mean()
+    raw_penalty = kl_coef * kl_mean
+    clipped_penalty = torch.clamp(raw_penalty, max=kl_penalty_cap)
+    return clipped_penalty, raw_penalty, kl_mean
 
 
 class EnhancedEntropyController:
