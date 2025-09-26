@@ -433,7 +433,7 @@ def compute_ppo_loss(
     baseline: Optional[torch.Tensor] = None
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
-    Compute PPO clipped loss.
+    Compute PPO clipped loss with numerical stability.
     
     Args:
         old_log_probs: Log probabilities from old policy [B, T]
@@ -445,22 +445,30 @@ def compute_ppo_loss(
     Returns:
         Tuple of (ppo_loss, advantage)
     """
-    # Compute advantage
+    # Compute advantage with clipping
     if baseline is not None:
-        advantage = rewards - baseline
+        advantage = rewards - baseline.detach()  # Detach baseline to prevent gradient flow
     else:
         advantage = rewards
     
-    # Probability ratio
+    # Clip advantages to prevent extreme values
+    advantage = torch.clamp(advantage, -2.0, 2.0)
+    
+    # Probability ratio with numerical stability
     log_ratio = new_log_probs.sum(dim=1) - old_log_probs.sum(dim=1)  # [B]
+    # Clamp log ratio to prevent extreme ratios
+    log_ratio = torch.clamp(log_ratio, -5.0, 5.0)
     ratio = torch.exp(log_ratio)
     
-    # PPO loss
+    # Apply PPO clipping
     surr1 = ratio * advantage
     surr2 = torch.clamp(ratio, 1 - clip_epsilon, 1 + clip_epsilon) * advantage
     ppo_loss = -torch.min(surr1, surr2).mean()
     
-    return ppo_loss, advantage
+    # Additional safety: clip PPO loss if it's too large
+    ppo_loss = torch.clamp(ppo_loss, -50.0, 50.0)
+    
+    return ppo_loss, advantage.detach()  # Detach advantage to prevent gradient flow back to baseline
 
 def compute_kl_divergence(
     old_action_probs: torch.Tensor,
