@@ -28,7 +28,6 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - Uses `gbyuvd/synthaccess-chemselfies` as a **reward model**  
 - Rewards molecules predicted as **"Easy"** to synthesize  
 - Penalizes molecules predicted as **"Hard"**  
-- Supports ablation of reward components: SA-only, ChemQ3-only, or mixed  
 - Designed for **rapid reward ablation**: SA-only, ChemQ3-only, or mixed modes  
 - Tries to be compatible with HuggingFace `Trainer` and `PPOTrainer` for easy RL experimentation  
 
@@ -58,7 +57,6 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - The **cyclical gradual curriculum + 25-token cap** potentially keeps training dynamic, avoids overfitting, and enables **<1hr RL policy iterations** on a single GPU  
 - Shorter capped lengths (≤25 tokens) allow faster iteration, enabling more frequent updates and practical RL prototyping  
 - Built from the ground up for (at least try to) **HuggingFace AutoModel/AutoTokenizer compatibility**
-- Tries to be compatible with HuggingFace AutoModel/AutoTokenizer workflowsel/AutoTokenizer compatibility**
 
 ---
 
