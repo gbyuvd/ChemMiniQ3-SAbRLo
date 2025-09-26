@@ -8,7 +8,13 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - 🧩 **Synthetic Accessibility (SA) Rewards** — guiding generation with a classifier (`gbyuvd/synthaccess-chemselfies`) to favor molecules that are easier to synthesize.  
 - 🔄 **Cyclical Gradual Generation** — a curriculum learning strategy that **gradually increases molecule length up to 25 tokens**, then **resets and repeats**, enabling faster RL convergence and stable prototyping.
 
-*Prototype research code — not production-ready. Built for speed, not scale.*
+*Prototype research code — not production-ready. Built for speed, not scale - yet.*
+
+Example of a generated molecule, found no identical mol in PubChem
+
+`O=C(O)CC=1CCCCC=1C2=CC=CC(=C2)NC(=O)CC3=CC=CC=C3CCC`
+
+![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/-etV70JXkUe1G7Sy1n12z.png)
 
 ---
 
