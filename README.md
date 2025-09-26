@@ -22,31 +22,43 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - ✅ **Gradient Checkpointing & Streaming Dataset Loader** – Lightweight, hardware-friendly, optimized for rapid RL prototyping  
 
 ---
+# 🧪 Reinforcement Learning Enhancements
 
-## 🧪 Reinforcement Learning Enhancements
-
-### 1️⃣ SA-Guided PPO-KL Fine-Tuning
+## 1️⃣ SA-Guided PPO-KL Fine-Tuning
 - Uses `gbyuvd/synthaccess-chemselfies` as a **reward model**  
-- Rewards **“Easy”** synthetic accessibility predictions  
-- Penalizes **“Hard”** molecules  
+- Rewards molecules predicted as **"Easy"** to synthesize  
+- Penalizes molecules predicted as **"Hard"**  
+- Supports ablation of reward components: SA-only, ChemQ3-only, or mixed  
 - Designed for **rapid reward ablation**: SA-only, ChemQ3-only, or mixed modes  
-- Fully compatible with HuggingFace `Trainer` and `PPOTrainer` for easy RL experimentation  
+- Tries to be compatible with HuggingFace `Trainer` and `PPOTrainer` for easy RL experimentation  
 
-### 2️⃣ Cyclical Gradual Curriculum
-- Gradually increases max generation length: **10 → 15 → 20 → 25 tokens**  
-- After reaching **25**, it **resets back to 10** and repeats the cycle  
-- Why **25**? Because **faster RL training requires shorter sequences** to enable rapid iteration — 25 tokens strikes the optimal balance between structural complexity and training speed, allowing 2–3x more gradient steps per epoch compared to 30+ token sequences.  
-- This design enables **rapid prototyping of reward functions, policy updates, and KL penalties** without waiting for long-sequence convergence.
+## 2️⃣ Symmetric Curriculum with Normalized Rewards
+- Generation length increases and decreases smoothly: **10 → 15 → 20 → 25 → 20 → 15 → 10 …**  
+- Avoids sharp resets by cycling symmetrically instead of jumping from max back to min  
+- **[Previous cyclical approach - now enhanced]**: Gradually increases max generation length, but now uses **symmetric cycling** to avoid sharp transitions  
+- Rewards are normalized by sequence length (default: √len) to stabilize training across different rollout sizes  
+- KL and entropy controllers are reset and recalibrated at each curriculum phase change  
+- Entropy targets scale with sequence length, encouraging consistent exploration at both short and long contexts  
+- Why **25**? Because **faster RL training requires shorter sequences** to enable rapid iteration — 25 tokens potentially could strike the optimal balance between structural complexity and training speed, allowing 2–3x more gradient steps per epoch compared to 30+ token sequences  
 
 > 💡 *Note: The average SELFIES sequence length in our ~3M dataset is 33.41 ± 1.80 tokens — but for RL prototyping, we cap at 25 to accelerate training cycles and improve signal-to-noise in reward gradients.*
+
+## 3️⃣ PPO, KL, and Entropy Stabilization
+- **PPO loss** uses advantage clipping scaled with sequence length to prevent gradient spikes  
+- **KL controller** adapts β more quickly and resets per curriculum update  
+- **Entropy controller** adjusts targets based on sequence length to balance exploration  
 
 ---
 
 ## 🚀 Why ChemMiniQ3-SAbRLo?
 - Prior approaches optimized only validity or physicochemical rules (Lipinski, etc.)  
 - **Our method explicitly biases generation toward molecules that are not just valid, but also *easier to synthesize***  
+- Extends beyond validity and rule-based rewards by explicitly biasing toward **synthetically accessible molecules**  
+- The **symmetric curriculum + reward normalization** improves stability across varying sequence lengths  
 - The **cyclical gradual curriculum + 25-token cap** potentially keeps training dynamic, avoids overfitting, and enables **<1hr RL policy iterations** on a single GPU  
+- Shorter capped lengths (≤25 tokens) allow faster iteration, enabling more frequent updates and practical RL prototyping  
 - Built from the ground up for (at least try to) **HuggingFace AutoModel/AutoTokenizer compatibility**
+- Tries to be compatible with HuggingFace AutoModel/AutoTokenizer workflowsel/AutoTokenizer compatibility**
 
 ---
 
