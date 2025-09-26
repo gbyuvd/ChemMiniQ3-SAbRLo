@@ -62,6 +62,7 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - For training, clone this repo:
   - Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
+- Dataset for training NTP/MTP can be fetched [here](https://huggingface.co/datasets/gbyuvd/sabrlo-chem-selfies-training)
 
 ## 🔮 Planned Experiments & Next Steps
 
