@@ -12,7 +12,7 @@ import numpy as np
 from tqdm import tqdm
 from FastChemTokenizerHF import FastChemTokenizerSelfies
 from ChemQ3MTP import ChemQ3MTPForCausalLM 
-from ChemQ3MTP.rl_utils import CurriculumManager, AdaptiveKLController, batch_compute_rewards, compute_ppo_loss, compute_kl_divergence, compute_entropy_bonus
+from ChemQ3MTP.rl_utils import CurriculumManager, AdaptiveKLController, batch_compute_rewards, compute_ppo_loss, compute_kl_divergence, compute_entropy_bonus, compute_kl_penalty
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -30,8 +30,15 @@ def main():
     print("\n🎯 Phase 2: RL Fine-tuning with PPO + Curriculum Learning")
     model.set_mtp_training(False)
     
-    # Initialize KL controller
-    kl_controller = AdaptiveKLController(init_kl_coef=0.1, target_kl=0.01, kl_horizon=100)
+    # Initialize KL controller - Using correct parameter name based on class definition
+    kl_controller = AdaptiveKLController(
+        init_kl_coef=0.1,
+        target_kl=0.01,
+        horizon=100,        # <-- use horizon instead of kl_horizon
+        max_kl_coef=100.0,  # optional
+        ema_alpha=0.9,      # optional
+        kl_penalty_cap=10.0 # optional
+    )
     model.kl_controller = kl_controller  # Set on model for consistency
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-6)
@@ -45,13 +52,14 @@ def main():
     input_ids = dummy_input.input_ids.to(device)
 
     # Training config
-    total_steps = 10000
+    total_steps = 2500
     checkpoint_steps = {total_steps // 4, total_steps // 2, 3 * total_steps // 4, total_steps}
     checkpoint_dir = "./ppo_checkpoints_test"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     # --- RL Training Loop with tqdm ---
     for step in tqdm(range(total_steps), desc="RL Training"):
+        global_step = step  # Define global_step for KL controller
         max_new_tokens = curriculum.get_max_new_tokens()
 
         # === PPO Rollout ===
@@ -83,7 +91,7 @@ def main():
         # === Compute rewards using rl_utils ===
         rewards_dict = batch_compute_rewards(
             selfies_list=selfies_list,
-            reward_mode="sa",  # SA-only mode
+            reward_mode="chemq3",  # Bioaware-only mode
         )
         rewards = rewards_dict["total_rewards"].to(device)
 
@@ -97,9 +105,27 @@ def main():
         )
 
         # === Compute KL divergence and update controller ===
+        # Compute KL divergence per batch
+        # === Compute KL divergence and update controller ===
         kl_div = compute_kl_divergence(old_action_probs, new_action_probs)
-        beta = kl_controller.update(kl_div.mean().item())
-        kl_penalty = beta * kl_div.mean()
+        kl_mean = kl_div.mean().item()
+
+        # Update KL controller using EMA-smoothed KL
+        kl_controller.update(kl_mean, n_steps=global_step)
+        beta = kl_controller()  # get current coefficient
+
+        # Compute clipped KL penalty
+        kl_penalty, raw_kl_penalty, kl_mean_tensor = compute_kl_penalty(
+            kl_div, beta, kl_controller.kl_penalty_cap
+        )
+
+        # --- Logging (safe, interpretable values) ---
+        logs = {}
+        logs["kl_mean"] = kl_mean_tensor.item()
+        logs["kl_beta"] = beta
+        logs["kl_penalty_raw"] = raw_kl_penalty.item()
+        logs["kl_penalty_clipped"] = kl_penalty.item()
+
 
         # === Compute entropy bonus with adaptive weighting ===
         entropy_per_example = compute_entropy_bonus(new_action_probs)
@@ -184,7 +210,9 @@ def main():
                 f"Lipinski={lipinski_score:.3f} | "
                 f"Reward={rewards.mean().item():.3f} | "
                 f"Entropy={entropy.item():.3f} | "
-                f"EntropyW={adaptive_entropy_weight:.4f}"
+                f"EntropyW={adaptive_entropy_weight:.4f} | "
+                f"KL_Beta={beta:.4f} | "
+                f"KL_Mean={kl_mean:.4f}"
             )
             if avg_sa_reward is not None:
                 log_line += f" | SA={avg_sa_reward:.3f}"
