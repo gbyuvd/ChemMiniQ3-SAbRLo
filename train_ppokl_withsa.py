@@ -8,12 +8,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import os
 import torch
+import numpy as np
 from tqdm import tqdm
 from FastChemTokenizerHF import FastChemTokenizerSelfies
 from ChemQ3MTP import ChemQ3MTPForCausalLM 
 from ChemQ3MTP.rl_utils import CurriculumManager, AdaptiveKLController, batch_compute_rewards, compute_ppo_loss, compute_kl_divergence, compute_entropy_bonus
-
-# ... rest of your RL script
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -23,7 +22,7 @@ def main():
     tokenizer = FastChemTokenizerSelfies.from_pretrained("../selftok_core")
 
     # --- Load model ---
-    model = ChemQ3MTPForCausalLM.from_pretrained("./CMQ3-o-1")  # Updated to use new model class
+    model = ChemQ3MTPForCausalLM.from_pretrained("./checkpoint-1635")  # Updated to use new model class
     model.tokenizer = tokenizer
     model.to(device)
 
@@ -149,32 +148,55 @@ def main():
 
         # Logging every 50 steps
         if step % 50 == 0:
-            log_line = (
-                f"\n[RL Step {step}] "
-                f"Loss={total_loss.item():.4f} | "
-                f"PPO Loss={ppo_loss.item():.4f} | "
-                f"KL Penalty={kl_penalty.item():.4f} | "
-                f"KL Coef={beta:.4f} | "
-                f"Entropy={entropy.item():.3f} | "
-                f"EntropyW={adaptive_entropy_weight:.4f} | "
-                f"Avg Reward={rewards.mean().item():.3f}"
-            )
-            print(log_line)
-
             # Compute validity rate for logging
             validity_count = 0
-            for selfies in selfies_list[:5]:  # Check first 5 samples
+            for selfies in selfies_list[:10]:  # Check first 10 samples like original
                 from ChemQ3MTP.rl_utils import selfies_to_smiles
                 smiles = selfies_to_smiles(selfies)
                 if smiles and smiles != "":
                     validity_count += 1
-            validity_rate = validity_count / min(5, len(selfies_list))
+            validity_rate = validity_count / max(1, min(10, len(selfies_list)))
             
-            print(f"  Sample Validity Rate: {validity_rate:.3f}")
-            print(f"  Sample SELFIES: {selfies_list[0][:100]}")
+            # Compute lipinski score for logging (even though not used in rewards)
+            lipinski_scores = []
+            for selfies in selfies_list[:10]:
+                from rdkit import Chem
+                smiles = selfies_to_smiles(selfies)
+                mol = Chem.MolFromSmiles(smiles) if smiles else None
+                if mol:
+                    from rdkit.Chem import Lipinski, Descriptors
+                    mw = Descriptors.MolWt(mol)
+                    logp = Descriptors.MolLogP(mol)
+                    hbd = Lipinski.NumHDonors(mol)
+                    hba = Lipinski.NumHAcceptors(mol)
+                    rules = [250 < mw <= 500, logp <= 5, hbd <= 5, hba <= 10]
+                    lipinski_score = sum(rules) / 4.0
+                    lipinski_scores.append(lipinski_score)
+            lipinski_score = np.mean(lipinski_scores) if lipinski_scores else 0.0
+
+            # Extract SA reward if available
+            avg_sa_reward = rewards_dict.get("sa_rewards", rewards).mean().item() if "sa_rewards" in rewards_dict else rewards.mean().item()
+
+            log_line = (
+                f"\n[RL Step {step}] "
+                f"Loss={total_loss.item():.4f} | "
+                f"Valid={validity_rate:.3f} | "
+                f"Lipinski={lipinski_score:.3f} | "
+                f"Reward={rewards.mean().item():.3f} | "
+                f"Entropy={entropy.item():.3f} | "
+                f"EntropyW={adaptive_entropy_weight:.4f}"
+            )
+            if avg_sa_reward is not None:
+                log_line += f" | SA={avg_sa_reward:.3f}"
+            print(log_line)
+
+            # Sample conversion for display
+            sample_selfies = selfies_list[0][:100]
+            sample_smiles = selfies_to_smiles(selfies_list[0]) or "Invalid"
+            print(f"  Sample SELFIES: {sample_selfies}")
+            print(f"  Sample SMILES: {sample_smiles}")
 
     print("🎉 Training complete!")
 
 if __name__ == "__main__":
-
     main()
