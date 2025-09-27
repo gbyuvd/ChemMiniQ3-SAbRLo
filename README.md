@@ -112,7 +112,7 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
   - [x] Chunk I
   - [x] Chunk II
   - [x] Chunk III
-  - [ ] Chunk IV
+  - [x] Chunk IV; early signs of overfitting with current lr 5e-6, will decrease to 3e-6
   - [ ] Chunk V
   - [ ] Chunk VI
 - [ ] Publish complete pretraining on GitHub and HF (if compatible)
