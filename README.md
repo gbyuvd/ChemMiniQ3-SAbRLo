@@ -114,11 +114,13 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
 - **[ongoing]** Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
 - [ ] Ablation studies
 - **[priority]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
-- [ ] Complete pretraining on all ~3M dataset (when possible)
+- [ ] Complete pretraining on all ~1M dataset (when possible)
   - [ ] Chunk I
-  - [ ] Chunk II
+  - **[ongoing]** Chunk II
   - [ ] Chunk III
   - [ ] Chunk IV
+  - [ ] Chunk V
+  - [ ] Chunk VI
 - [ ] Publish complete pretraining on GitHub and HF (if compatible)
 - [ ] Complete RL fine-tuning on verified rewards system.
 
