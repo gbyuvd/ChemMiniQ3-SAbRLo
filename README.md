@@ -107,14 +107,7 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
 
 ## To-Do
 - **[ongoing]** Review, clean, and test train with existing codes
-- **[ongoing]** Warm up training on 163K dataset for MTP
-- **[ongoing]** Warm up PPO-RL with only Bioaware set on for 7000 steps
-- [ ] Test and observe the stability of Mixed Rewards for 7000 steps
-- [ ] Warm up PPO-RL with only SA set on for 7000 steps
-- [ ] Upload both warm-up MTP and PPO-RL models to HF repo
-- **[ongoing]** Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
-- [ ] Ablation studies
-- **[priority]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
+- [x] Warm up training on 163K dataset for MTP
 - [ ] Complete pretraining on all ~1M dataset (when possible)
   - [x] Chunk I
   - **[ongoing]** Chunk II
@@ -123,7 +116,15 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
   - [ ] Chunk V
   - [ ] Chunk VI
 - [ ] Publish complete pretraining on GitHub and HF (if compatible)
+- **[ongoing]** Warm up PPO-RL with only Bioaware set on for 4500 steps
+- [ ] Test and observe the stability of Mixed Rewards for 4500 steps
+- [ ] Warm up PPO-RL with only SA set on for 7000 steps
 - [ ] Complete RL fine-tuning on verified rewards system.
+- [ ] Upload both warm-up MTP and PPO-RL models to HF repo
+- **[ongoing]** Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
+- [ ] Ablation studies
+- **[ongoing]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
+
 
 ---
 
