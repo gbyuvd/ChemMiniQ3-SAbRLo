@@ -75,6 +75,7 @@ Example of a generated molecule, found no identical mol in PubChem
 ## Usage
 
 - See `demo_usage.ipynb` or download it to use (I am still learning abt HF API so please be patient.)
+  - model weights can be fetched [here](https://huggingface.co/gbyuvd/ChemMiniQ3-SAbRLo) if not automatically downloaded locally
 - For training, clone this repo:
   - Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
@@ -115,7 +116,7 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
 - [ ] Ablation studies
 - **[priority]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
 - [ ] Complete pretraining on all ~1M dataset (when possible)
-  - [ ] Chunk I
+  - [x] Chunk I
   - **[ongoing]** Chunk II
   - [ ] Chunk III
   - [ ] Chunk IV
