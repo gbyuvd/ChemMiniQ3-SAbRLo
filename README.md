@@ -110,8 +110,8 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
 - [x] Warm up training on 163K dataset for MTP
 - [ ] Complete pretraining on all ~1M dataset (when possible)
   - [x] Chunk I
-  - [ ] Chunk II
-  - **[ongoing]** Chunk III
+  - [x] Chunk II
+  - [x] Chunk III
   - [ ] Chunk IV
   - [ ] Chunk V
   - [ ] Chunk VI
