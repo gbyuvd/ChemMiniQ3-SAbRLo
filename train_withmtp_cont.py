@@ -185,16 +185,22 @@ def main():
     out = out.to("cuda" if torch.cuda.is_available() else "cpu")
     print(out.input_ids.device)
 
-    # --- Define config ---
-    config = ChemQ3MTPConfig(  # Updated to use ChemQ3MTPConfig
-        vocab_size=len(tokenizer),
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.pad_token_id,
-        **MODEL_CFG
-    )
+    checkpoint_path = "./chunk-2"
 
-    model = ChemQ3MTPForCausalLM(config)  # Updated to use the new model class
+    if os.path.isdir(checkpoint_path):
+        print(f"Loading model from checkpoint: {checkpoint_path}")
+        model = ChemQ3MTPForCausalLM.from_pretrained(checkpoint_path)
+        config = model.config
+    else:
+        print("No checkpoint found, initializing new model.")
+        config = ChemQ3MTPConfig(
+            vocab_size=len(tokenizer),
+            bos_token_id=tokenizer.bos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
+            pad_token_id=tokenizer.pad_token_id,
+            **MODEL_CFG
+        )
+        model = ChemQ3MTPForCausalLM(config)
 
     def count_parameters(model):
         return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -218,7 +224,7 @@ def main():
     # Load dataset without streaming
     dataset = load_dataset(
         'csv',
-        data_files='../data/chunk_1.csv',
+        data_files='../data/chunk_3.csv',
         split='train'
     )
 
