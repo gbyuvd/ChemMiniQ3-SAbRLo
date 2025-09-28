@@ -85,9 +85,21 @@ Example of a generated molecule, found no identical mol in PubChem
 
 ### Non-RL (Current Version: 4th Chunk)
 
-using `evaluate_molecular_model.py`:
+using `evaluate_molecular_model.py` tested against chunk-4 data:
+
+Example generated molecule (5):
+
+![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/KFMh4eA9RJA_HlNAlXoDq.png)
 
 ```text
+...
+Example 5:
+  Raw SELFIES : [O] [=C] [Branch1] [C] [O] [C] [C] [C] [S] [C] [C] [=C] [C] [=N] [C] [=C] [Ring1...
+  SMILES      : O=C(O)CCCSCC1=CC=NC=C1
+  SA Label    : Easy (confidence: 0.999)
+  Atoms       : 14
+  Bonds       : 14
+
 🔍 SA Label Analysis (first 100 molecules):
   Easy to synthesize: 87/100 (87%)
   Hard to synthesize: 13/100 (13%)
@@ -106,6 +118,7 @@ Synthesis Labels : Easy: 922/998 (92.4%) | Hard: 76/998 (7.6%)
 Internal Diversity: 0.8744 (1 - avg Tanimoto)
 =======================================================
 ```
+
 
 ## 🔮 Planned Experiments & Next Steps
 
