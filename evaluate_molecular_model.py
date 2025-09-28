@@ -24,7 +24,7 @@ from FastChemTokenizerHF import FastChemTokenizerSelfies
 from ChemQ3MTP import ChemQ3MTPForCausalLM
 
 # ----------------------------
-# Robust Conversion & Validation
+# Robust Conversion & Validation (as per your spec)
 # ----------------------------
 
 def selfies_to_smiles(selfies_str: str) -> Optional[str]:
@@ -42,28 +42,19 @@ def is_valid_smiles(smiles: str) -> bool:
     mol = Chem.MolFromSmiles(smiles.strip())
     return mol is not None
 
-def compute_sa_score_from_selfies(selfies_str: str) -> float:
-    """Compute SA score using the model's SA classifier (whitespace tokenized)."""
+def get_sa_label_and_confidence(selfies_str: str) -> tuple[str, float]:
+    """Get SA label (Easy/Hard) and confidence from the model's SA classifier."""
     try:
-        # Import the SA classifier directly since compute_sa_reward processes the output
         from ChemQ3MTP.rl_utils import get_sa_classifier
         classifier = get_sa_classifier()
         if classifier is None:
-            return 5.0
+            return "Unknown", 0.0
         
         # Get raw classifier output: [{'label': 'Easy', 'score': 0.9187200665473938}]
         result = classifier(selfies_str, truncation=True, max_length=128)[0]
-        
-        # Convert to SA score: Easy = low SA score (easier to synthesize), Hard = high SA score
-        if result["label"].lower() == "easy":
-            # For "Easy" synthesis, return low SA score (good for synthesis)
-            return 1.0 - result["score"]  # 0.919 confidence -> 0.081 SA score
-        else:
-            # For "Hard" synthesis, return high SA score (bad for synthesis) 
-            return result["score"]  # Use confidence directly as SA penalty
+        return result["label"], result["score"]
     except Exception as e:
-        print(f"SA classifier failed: {e}")
-        return 5.0  # Default middle value
+        return "Unknown", 0.0
 
 def get_morgan_fingerprint_from_smiles(smiles: str, radius=2, n_bits=2048):
     mol = Chem.MolFromSmiles(smiles)
@@ -196,7 +187,7 @@ def evaluate_model(
                 "smiles": smiles.strip()
             })
 
-    # >>> DEBUG: Print multiple examples and SA score analysis <<<
+    # >>> DEBUG: Print multiple examples and SA label analysis <<<
     if valid_records:
         print("\n🔍 DEBUG: Sample generated molecules")
         print("-" * 70)
@@ -206,15 +197,16 @@ def evaluate_model(
             print(f"  Raw SELFIES : {example['raw_selfies'][:80]}{'...' if len(example['raw_selfies']) > 80 else ''}")
             print(f"  SMILES      : {example['smiles']}")
             
-            # Test SA classifier with whitespace SELFIES
+            # Get SA label and confidence
+            label, confidence = get_sa_label_and_confidence(example['raw_selfies'])
+            print(f"  SA Label    : {label} (confidence: {confidence:.3f})")
+            
             if i == 0:
-                # Test SA classifier
-                sa_score = compute_sa_score_from_selfies(example['raw_selfies'])
-                print(f"  SA Score    : {sa_score:.3f}")
-                print(f"  🧪 SA Test - Simple molecule: {compute_sa_score_from_selfies('[C]'):.3f}")
-                print(f"  🧪 SA Test - Benzene: {compute_sa_score_from_selfies('[c] [c] [c] [c] [c] [c] [Ring1] [=Branch1]'):.3f}")
-            else:
-                print(f"  SA Score    : {compute_sa_score_from_selfies(example['raw_selfies']):.3f}")
+                # Test SA classifier with simple molecules
+                simple_label, simple_conf = get_sa_label_and_confidence('[C]')
+                benzene_label, benzene_conf = get_sa_label_and_confidence('[c] [c] [c] [c] [c] [c] [Ring1] [=Branch1]')
+                print(f"  🧪 SA Test - Simple molecule: {simple_label} ({simple_conf:.3f})")
+                print(f"  🧪 SA Test - Benzene: {benzene_label} ({benzene_conf:.3f})")
             
             # Check molecule properties
             mol = Chem.MolFromSmiles(example['smiles'])
@@ -224,15 +216,21 @@ def evaluate_model(
             print()
         print("-" * 70)
         
-        # SA Score distribution analysis using SA classifier
-        sa_sample = [compute_sa_score_from_selfies(r["raw_selfies"]) for r in valid_records[:100]]
-        unique_sa_scores = set(sa_sample)
-        print(f"🔍 SA Score Analysis (first 100 molecules):")
-        print(f"  Unique SA scores: {len(unique_sa_scores)}")
-        print(f"  Min SA score: {min(sa_sample):.3f}")
-        print(f"  Max SA score: {max(sa_sample):.3f}")
-        if len(unique_sa_scores) <= 5:
-            print(f"  All SA scores: {sorted(unique_sa_scores)}")
+        # SA Label distribution analysis
+        sa_labels = []
+        for r in valid_records[:100]:
+            label, _ = get_sa_label_and_confidence(r["raw_selfies"])
+            sa_labels.append(label)
+        
+        easy_count = sa_labels.count("Easy")
+        hard_count = sa_labels.count("Hard")
+        unknown_count = sa_labels.count("Unknown")
+        
+        print(f"🔍 SA Label Analysis (first 100 molecules):")
+        print(f"  Easy to synthesize: {easy_count}/100 ({easy_count}%)")
+        print(f"  Hard to synthesize: {hard_count}/100 ({hard_count}%)")
+        if unknown_count > 0:
+            print(f"  Unknown/Failed: {unknown_count}/100 ({unknown_count}%)")
     else:
         print("\n⚠️  WARNING: No valid molecules generated in sample!")
     # <<< END DEBUG >>>
@@ -246,9 +244,16 @@ def evaluate_model(
     novel_count = sum(1 for r in unique_valid if r["selfies_clean"] not in train_selfies_clean)
     novelty = novel_count / len(unique_valid) if unique_valid else 0.0
 
-    # SA Scores (using model's SA classifier, not broken RDKit)
-    sa_scores = [compute_sa_score_from_selfies(r["raw_selfies"]) for r in unique_valid]
-    avg_sa = sum(sa_scores) / len(sa_scores) if sa_scores else 5.0
+    # SA Label Counts (using model's SA classifier)
+    sa_labels_all = []
+    for r in unique_valid:
+        label, _ = get_sa_label_and_confidence(r["raw_selfies"])
+        sa_labels_all.append(label)
+    
+    easy_total = sa_labels_all.count("Easy")
+    hard_total = sa_labels_all.count("Hard")
+    unknown_total = sa_labels_all.count("Unknown")
+    total_labeled = len(sa_labels_all)
 
     # Internal Diversity (on SMILES)
     if len(unique_valid) >= 2:
@@ -282,7 +287,9 @@ def evaluate_model(
     print(f"Validity         : {validity:.4f} ({len(valid_records)}/{n_samples})")
     print(f"Uniqueness       : {uniqueness:.4f} (unique valid)")
     print(f"Novelty (vs train): {novelty:.4f} (space-free SELFIES)")
-    print(f"Avg. SA Score    : {avg_sa:.3f} (ChemFIE-SA; lower = better)")
+    print(f"Synthesis Labels : Easy: {easy_total}/{total_labeled} ({easy_total/max(1,total_labeled)*100:.1f}%) | Hard: {hard_total}/{total_labeled} ({hard_total/max(1,total_labeled)*100:.1f}%)")
+    if unknown_total > 0:
+        print(f"                   Unknown: {unknown_total}/{total_labeled} ({unknown_total/max(1,total_labeled)*100:.1f}%)")
     print(f"Internal Diversity: {internal_diversity:.4f} (1 - avg Tanimoto)")
     print("="*55)
 
@@ -293,10 +300,17 @@ def evaluate_model(
         "validity": validity,
         "uniqueness": uniqueness,
         "novelty": novelty,
-        "avg_sa_score": avg_sa,
+        "sa_easy_count": easy_total,
+        "sa_hard_count": hard_total,
+        "sa_easy_percentage": easy_total/max(1,total_labeled)*100,
+        "sa_hard_percentage": hard_total/max(1,total_labeled)*100,
         "internal_diversity": internal_diversity,
         "valid_molecules_count": len(valid_records)
     }
+    
+    if unknown_total > 0:
+        results["sa_unknown_count"] = unknown_total
+        results["sa_unknown_percentage"] = unknown_total/max(1,total_labeled)*100
 
     output_json = os.path.join(model_path, "evaluation_summary.json")
     with open(output_json, "w") as f:
@@ -322,5 +336,4 @@ if __name__ == "__main__":
         train_data_path=args.train_data,
         n_samples=args.n_samples,
         seed=args.seed
-
     )
