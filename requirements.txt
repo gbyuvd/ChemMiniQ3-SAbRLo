@@ -1,0 +1,10 @@
+datasets==4.0.0
+numpy==2.3.3
+pandas==2.3.2
+ranger21==0.1.0
+rdkit==2025.3.6
+scikit_learn==1.7.2
+selfies==2.2.0
+torch==2.6.0+cu126
+tqdm==4.67.1
+transformers==4.56.1
