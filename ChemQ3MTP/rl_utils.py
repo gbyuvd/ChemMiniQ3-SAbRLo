@@ -1,9 +1,11 @@
 # ========================
 #  RL_UTILS.PY
+#  v3
 #  Chemistry RL Training Utilities for ChemQ3-MTP
 #  by gbyuvd
 #  Patched: reward normalization, KL/entropy reset per phase,
-#           entropy target annealing, and symmetric curriculum (kept old naming).
+#           entropy target annealing, and symmetric curriculum
+#           and now with Durrant's Lab's filtering included
 # ========================
 
 import torch
@@ -46,6 +48,53 @@ def is_valid_smiles(smiles: str) -> bool:
     if not isinstance(smiles, str) or len(smiles.strip()) == 0:
         return False
     return Chem.MolFromSmiles(smiles.strip()) is not None
+
+def passes_durrant_lab_filter(smiles: str) -> bool:
+    """
+    Apply Durant's lab filter to remove improbable substructures.
+    Returns True if molecule passes the filter (is acceptable), False otherwise.
+    """
+    if not smiles or not isinstance(smiles, str):
+        return False
+    
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return False
+    
+    # Define SMARTS patterns for problematic substructures
+    problematic_patterns = [
+        "C=[N-]",                    # Carbon double bonded to negative nitrogen
+        "[N-]C=[N+]",               # Nitrogen anion bonded to nitrogen cation
+        "[nH+]c[n-]",               # Aromatic nitrogen cation adjacent to nitrogen anion
+        "[#7+]~[#7+]",              # Positive nitrogen connected to positive nitrogen
+        "[#7-]~[#7-]",              # Negative nitrogen connected to negative nitrogen
+        "[!#7]~[#7+]~[#7-]~[!#7]",  # Bridge: non-nitrogen - pos nitrogen - neg nitrogen - non-nitrogen
+        "[#5]",                     # Boron atoms
+        "O=[PH](=O)([#8])([#8])",   # Phosphoryl with hydroxyls
+        "N=c1cc[#7]c[#7]1",         # Nitrogen in aromatic ring with another nitrogen
+        "[$([NX2H1]),$([NX3H2])]=C[$([OH]),$([O-])]", # N=CH-OH or N=CH-O-
+    ]
+    
+    # Check for metals (excluding common biologically relevant ions like Na+, K+, Ca2+, Mg2+)
+    metal_exclusions = {11, 12, 19, 20}  # Na, Mg, K, Ca
+    for atom in mol.GetAtoms():
+        atomic_num = atom.GetAtomicNum()
+        if atomic_num > 20 and atomic_num not in metal_exclusions:
+            return False  # Metal present that's not in the exclusion list
+    
+    # Check for each problematic pattern
+    for pattern in problematic_patterns:
+        try:
+            patt_mol = Chem.MolFromSmarts(pattern)
+            if patt_mol is not None:
+                matches = mol.GetSubstructMatches(patt_mol)
+                if matches:
+                    return False  # Found problematic substructure
+        except:
+            # If SMARTS parsing fails, skip this pattern
+            continue
+    
+    return True  # Passed all checks
 
 # ========================
 # SA CLASSIFIER
@@ -249,7 +298,7 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
         Dictionary containing individual reward components and total
     """
     smiles = selfies_to_smiles(selfies_str)
-    mol = Chem.MolFromSmiles(smiles) if smiles else None
+    mol = Chem.MolFromSmiles(smiles) if smiles and passes_durrant_lab_filter(smiles) else None
 
     rewards = {
         "validity": 1.0 if mol is not None else 0.0,
@@ -280,7 +329,7 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
 def selfies_to_lipinski_reward(selfies_str: str) -> float:
     """Convert SELFIES to SMILES, then compute Lipinski reward."""
     smiles = selfies_to_smiles(selfies_str)
-    if smiles is None:
+    if smiles is None or not passes_durrant_lab_filter(smiles):
         return 0.0
     mol = Chem.MolFromSmiles(smiles)
     return compute_lipinski_reward(mol)
@@ -513,6 +562,9 @@ def batch_compute_rewards(
     sa_rewards = []
 
     for selfies_str in selfies_list:
+        smiles = selfies_to_smiles(selfies_str)
+        passes_filter = passes_durrant_lab_filter(smiles) if smiles else False
+        
         if reward_mode == "chemq3":
             r = compute_comprehensive_reward(selfies_str)
             validity_vals.append(r.get('validity', 0.0))
@@ -520,13 +572,13 @@ def batch_compute_rewards(
             total_rewards.append(r.get('total', 0.0))
 
         elif reward_mode == "sa":
-            sa = compute_sa_reward(selfies_str)
+            sa = compute_sa_reward(selfies_str) if passes_filter else 0.0
             sa_rewards.append(sa)
             total_rewards.append(sa)
 
         elif reward_mode == "mix":
             r = compute_comprehensive_reward(selfies_str)
-            sa = compute_sa_reward(selfies_str)
+            sa = compute_sa_reward(selfies_str) if passes_filter else 0.0
             mixed = reward_mix * r.get("total", 0.0) + (1.0 - reward_mix) * sa
             
             total_rewards.append(mixed)
@@ -596,7 +648,7 @@ def compute_training_metrics(
     valid_smiles = []
     for selfies_str in selfies_list:
         smiles = selfies_to_smiles(selfies_str)
-        if smiles and is_valid_smiles(smiles):
+        if smiles and is_valid_smiles(smiles) and passes_durrant_lab_filter(smiles):
             valid_smiles.append(smiles)
     
     metrics["num_valid"] = len(valid_smiles)
