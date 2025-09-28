@@ -89,7 +89,7 @@ datasets numpy pandas ranger21 rdkit scikit_learn selfies torch tqdm transformer
 
 ## ⚙️ Model Eval
 
-### Non-RL (Current Version: 4th Chunk)
+### Non-RL (Current Version)
 
 using `evaluate_molecular_model.py` tested against chunk-4 data:
 
@@ -153,14 +153,14 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
 ## To-Do
 - **[ongoing]** Review, clean, and test train with existing codes
 - [x] Warm up training on 163K dataset for MTP
-- [ ] Complete pretraining on all ~1M dataset (when possible)
+- [x] Complete pretraining on all ~1M dataset (when possible)
   - [x] Chunk I
   - [x] Chunk II
   - [x] Chunk III
-  - [x] Chunk IV; early signs of overfitting with current lr 5e-5, will decrease to 3e-5
-  - [ ] Chunk V
-  - [ ] Chunk VI
-- [ ] Publish complete pretraining on GitHub and HF (if compatible)
+  - [x] Chunk IV; early signs of overfitting with current lr 5e-5, will decrease to 7e-6
+  - [x] Chunk V (not included, overfitting perplexity=~3)
+  - [x] Chunk VI; lr 7e-6 & disable warmdown (not included, overfitting perplexity=~3)
+- [x] Publish complete pretraining on HF
 - **[ongoing]** Warm up PPO-RL with only Bioaware set on for 4500 steps
 - [ ] Test and observe the stability of Mixed Rewards for 4500 steps
 - [ ] Warm up PPO-RL with only SA set on for 7000 steps
