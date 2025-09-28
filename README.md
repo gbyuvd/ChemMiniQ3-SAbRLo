@@ -81,6 +81,33 @@ Example of a generated molecule, found no identical mol in PubChem
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
 - Dataset for training NTP/MTP can be fetched [here](https://huggingface.co/datasets/gbyuvd/sabrlo-chem-selfies-training)
 
+## ⚙️ Model Eval
+
+### Non-RL (Current Version: 4th Chunk)
+
+using `evaluate_molecular_model.py`:
+
+```text
+🔍 SA Score Analysis (first 100 molecules):
+  Unique SA scores: 100
+  Min SA score: 0.001
+  Max SA score: 0.997
+
+=======================================================
+📊 MOLECULAR GENERATION EVALUATION SUMMARY
+=======================================================
+Model Path       : ./chunk-4
+Generation Mode  : MTP-aware
+Samples Generated: 1000
+-------------------------------------------------------
+Validity         : 0.9990 (999/1000)
+Uniqueness       : 0.9990 (unique valid)
+Novelty (vs train): 0.9870 (space-free SELFIES)
+Avg. SA Score    : 0.096 (ChemFIE-SA; lower = better)
+Internal Diversity: 0.8744 (1 - avg Tanimoto)
+=======================================================
+```
+
 ## 🔮 Planned Experiments & Next Steps
 
 We are actively working on scaling up ChemMiniQ3-SAbRLo with more ambitious experiments — **all designed for rapid iteration**:
