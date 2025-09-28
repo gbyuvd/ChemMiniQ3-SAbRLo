@@ -44,58 +44,95 @@ def selfies_to_smiles(selfies_str: str) -> str | None:
         return None
 
 def is_valid_smiles(smiles: str) -> bool:
-    """Check if a SMILES string represents a valid molecule."""
+    """
+    Check if a SMILES string represents a valid molecule.
+    FIXED: Now properly checks for heavy atoms (non-hydrogens) >= 3
+    and rejects disconnected/separated molecules
+    """
     if not isinstance(smiles, str) or len(smiles.strip()) == 0:
         return False
-    return Chem.MolFromSmiles(smiles.strip()) is not None
+    
+    smiles = smiles.strip()
+    
+    # FAST CHECK: Reject separated molecules (contains dots)
+    if '.' in smiles:
+        return False  # Disconnected components indicated by dots
+    
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return False
+        
+        # CRITICAL FIX: Check heavy atoms (non-hydrogens), not total atoms
+        heavy_atoms = mol.GetNumHeavyAtoms()  # This excludes hydrogens
+        if heavy_atoms < 3:
+            return False
+            
+        return True
+    except Exception:
+        return False
 
 def passes_durrant_lab_filter(smiles: str) -> bool:
     """
-    Apply Durant's lab filter to remove improbable substructures.
+    Apply Durrant's lab filter to remove improbable substructures.
+    FIXED: More robust error handling, pattern checking, and disconnected molecule rejection.
     Returns True if molecule passes the filter (is acceptable), False otherwise.
     """
-    if not smiles or not isinstance(smiles, str):
+    if not smiles or not isinstance(smiles, str) or len(smiles.strip()) == 0:
         return False
     
-    mol = Chem.MolFromSmiles(smiles)
-    if mol is None:
+    try:
+        mol = Chem.MolFromSmiles(smiles.strip())
+        if mol is None:
+            return False
+        
+        # Check heavy atoms again (belt and suspenders approach)
+        if mol.GetNumHeavyAtoms() < 3:
+            return False
+        
+        # REJECT SEPARATED/DISCONNECTED MOLECULES (double check here too)
+        fragments = Chem.rdmolops.GetMolFrags(mol, asMols=False)
+        if len(fragments) > 1:
+            return False  # Reject molecules with multiple disconnected parts
+        
+        # Define SMARTS patterns for problematic substructures
+        problematic_patterns = [
+            "C=[N-]",                    # Carbon double bonded to negative nitrogen
+            "[N-]C=[N+]",               # Nitrogen anion bonded to nitrogen cation
+            "[nH+]c[n-]",               # Aromatic nitrogen cation adjacent to nitrogen anion
+            "[#7+]~[#7+]",              # Positive nitrogen connected to positive nitrogen
+            "[#7-]~[#7-]",              # Negative nitrogen connected to negative nitrogen
+            "[!#7]~[#7+]~[#7-]~[!#7]",  # Bridge: non-nitrogen - pos nitrogen - neg nitrogen - non-nitrogen
+            "[#5]",                     # Boron atoms
+            "O=[PH](=O)([#8])([#8])",   # Phosphoryl with hydroxyls
+            "N=c1cc[#7]c[#7]1",         # Nitrogen in aromatic ring with another nitrogen
+            "[$([NX2H1]),$([NX3H2])]=C[$([OH]),$([O-])]", # N=CH-OH or N=CH-O-
+        ]
+        
+        # Check for metals (excluding common biologically relevant ions)
+        metal_exclusions = {11, 12, 19, 20}  # Na, Mg, K, Ca
+        for atom in mol.GetAtoms():
+            atomic_num = atom.GetAtomicNum()
+            # More precise metal detection
+            if atomic_num > 20 and atomic_num not in metal_exclusions:
+                return False
+        
+        # Check for each problematic pattern
+        for pattern in problematic_patterns:
+            try:
+                patt_mol = Chem.MolFromSmarts(pattern)
+                if patt_mol is not None:
+                    matches = mol.GetSubstructMatches(patt_mol)
+                    if matches:
+                        return False  # Found problematic substructure
+            except Exception:
+                # If SMARTS parsing fails, continue to next pattern
+                continue
+        
+        return True  # Passed all checks
+        
+    except Exception:
         return False
-    
-    # Define SMARTS patterns for problematic substructures
-    problematic_patterns = [
-        "C=[N-]",                    # Carbon double bonded to negative nitrogen
-        "[N-]C=[N+]",               # Nitrogen anion bonded to nitrogen cation
-        "[nH+]c[n-]",               # Aromatic nitrogen cation adjacent to nitrogen anion
-        "[#7+]~[#7+]",              # Positive nitrogen connected to positive nitrogen
-        "[#7-]~[#7-]",              # Negative nitrogen connected to negative nitrogen
-        "[!#7]~[#7+]~[#7-]~[!#7]",  # Bridge: non-nitrogen - pos nitrogen - neg nitrogen - non-nitrogen
-        "[#5]",                     # Boron atoms
-        "O=[PH](=O)([#8])([#8])",   # Phosphoryl with hydroxyls
-        "N=c1cc[#7]c[#7]1",         # Nitrogen in aromatic ring with another nitrogen
-        "[$([NX2H1]),$([NX3H2])]=C[$([OH]),$([O-])]", # N=CH-OH or N=CH-O-
-    ]
-    
-    # Check for metals (excluding common biologically relevant ions like Na+, K+, Ca2+, Mg2+)
-    metal_exclusions = {11, 12, 19, 20}  # Na, Mg, K, Ca
-    for atom in mol.GetAtoms():
-        atomic_num = atom.GetAtomicNum()
-        if atomic_num > 20 and atomic_num not in metal_exclusions:
-            return False  # Metal present that's not in the exclusion list
-    
-    # Check for each problematic pattern
-    for pattern in problematic_patterns:
-        try:
-            patt_mol = Chem.MolFromSmarts(pattern)
-            if patt_mol is not None:
-                matches = mol.GetSubstructMatches(patt_mol)
-                if matches:
-                    return False  # Found problematic substructure
-        except:
-            # If SMARTS parsing fails, skip this pattern
-            continue
-    
-    return True  # Passed all checks
-
 # ========================
 # SA CLASSIFIER
 # ========================
@@ -290,6 +327,7 @@ def compute_lipinski_reward(mol) -> float:
 def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
     """
     Compute comprehensive reward for a SELFIES string.
+    FIXED: Uses corrected validity checking pipeline.
     
     Args:
         selfies_str: SELFIES representation of molecule
@@ -298,10 +336,19 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
         Dictionary containing individual reward components and total
     """
     smiles = selfies_to_smiles(selfies_str)
-    mol = Chem.MolFromSmiles(smiles) if smiles and passes_durrant_lab_filter(smiles) else None
+    
+    # Check validity with the fixed pipeline
+    is_valid = (smiles is not None and 
+                is_valid_smiles(smiles) and 
+                passes_durrant_lab_filter(smiles))
+    
+    if is_valid:
+        mol = Chem.MolFromSmiles(smiles)
+    else:
+        mol = None
 
     rewards = {
-        "validity": 1.0 if mol is not None else 0.0,
+        "validity": 1.0 if is_valid else 0.0,
         "biological_diversity": compute_biological_diversity_score(mol),
         "charge_neutrality": compute_charge_neutrality_score(mol),
         "local_charge_penalty": compute_local_charge_penalty(mol),
@@ -309,7 +356,11 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
         "structural_complexity": compute_structural_complexity_reward(mol),
     }
 
-    if rewards["validity"] == 0:
+    if not is_valid:
+        # If not valid, set all chemistry-based rewards to 0
+        for key in rewards:
+            if key != "validity":
+                rewards[key] = 0.0
         rewards["total"] = 0.0
     else:
         # Weighted combination of rewards
@@ -329,7 +380,7 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
 def selfies_to_lipinski_reward(selfies_str: str) -> float:
     """Convert SELFIES to SMILES, then compute Lipinski reward."""
     smiles = selfies_to_smiles(selfies_str)
-    if smiles is None or not passes_durrant_lab_filter(smiles):
+    if smiles is None or not is_valid_smiles(smiles) or not passes_durrant_lab_filter(smiles):
         return 0.0
     mol = Chem.MolFromSmiles(smiles)
     return compute_lipinski_reward(mol)
@@ -563,7 +614,11 @@ def batch_compute_rewards(
 
     for selfies_str in selfies_list:
         smiles = selfies_to_smiles(selfies_str)
-        passes_filter = passes_durrant_lab_filter(smiles) if smiles else False
+        
+        # Check validity comprehensively
+        is_valid = (smiles is not None and 
+                   is_valid_smiles(smiles) and 
+                   passes_durrant_lab_filter(smiles))
         
         if reward_mode == "chemq3":
             r = compute_comprehensive_reward(selfies_str)
@@ -572,13 +627,13 @@ def batch_compute_rewards(
             total_rewards.append(r.get('total', 0.0))
 
         elif reward_mode == "sa":
-            sa = compute_sa_reward(selfies_str) if passes_filter else 0.0
+            sa = compute_sa_reward(selfies_str) if is_valid else 0.0
             sa_rewards.append(sa)
             total_rewards.append(sa)
 
         elif reward_mode == "mix":
             r = compute_comprehensive_reward(selfies_str)
-            sa = compute_sa_reward(selfies_str) if passes_filter else 0.0
+            sa = compute_sa_reward(selfies_str) if is_valid else 0.0
             mixed = reward_mix * r.get("total", 0.0) + (1.0 - reward_mix) * sa
             
             total_rewards.append(mixed)
