@@ -1,5 +1,6 @@
 
 # 🧬 ChemMiniQ3-SAbRLo (Synthetic Accessibility with Bioaware RL — Optimized)
+
 ChemMiniQ3-SAbRLo is a lightweight experimental generative model for chemistry, built on mini **Qwen3**, designed for **rapid prototyping of HuggingFace `AutoModel` and `AutoTokenizer` compatibility**, and **fast iteration of Multi-Token Prediction (MTP) and RL fine-tuning algorithms/rewards**.
 
 It introduces a **new reinforcement learning framework** as the next iteration of [ChemMiniQ3-HoriFIE](https://huggingface.co/gbyuvd/ChemMiniQ3-HoriFIE), combining:
@@ -20,13 +21,14 @@ Example of a generated molecule, found no identical mol in PubChem
 ---
 
 ## ⚙️ Core Features
-
 - ✅ **Qwen3 Mini Backbone** – Efficient causal LM architecture, compatible with `transformers.AutoModelForCausalLM`  
 - ✅ **Multi-Token Prediction (MTP Head)** – Parallel prediction of 1–3 future tokens, implemented as a plug-and-play head compatible with `AutoModel`  
 - ✅ **Horizon Loss** – Weighted multi-horizon objectives for long-term coherence  
 - ✅ **SELFIES-native Tokenizer** – Robust encoding with [FastChemTokenizer](https://github.com/gbyuvd/FastChemTokenizer)  
 - ✅ **Ranger21 Optimizer** – Warmup/warmdown scheduling for stable training  
 - ✅ **Gradient Checkpointing & Streaming Dataset Loader** – Lightweight, hardware-friendly, optimized for rapid RL prototyping  
+- ✅ **Durrant's Lab Filter** – Integrated substructure filtering based on [gypsum_dl](https://github.com/durrantlab/gypsum_dl/) (Ropp _et al._ 2019) methodology to remove improbable molecular variants in validity check
+
 
 ---
 # 🧪 Reinforcement Learning Enhancements
@@ -64,7 +66,6 @@ Example of a generated molecule, found no identical mol in PubChem
 - The **cyclical gradual curriculum + 25-token cap** potentially keeps training dynamic, avoids overfitting, and enables **<1hr RL policy iterations** on a single GPU  
 - Shorter capped lengths (≤25 tokens) allow faster iteration, enabling more frequent updates and practical RL prototyping  
 - Built from the ground up for (at least try to) **HuggingFace AutoModel/AutoTokenizer compatibility**
-
 ---
 
 > 💡 **Target domain:** molecular generation (SELFIES).  
@@ -74,7 +75,6 @@ Example of a generated molecule, found no identical mol in PubChem
 ---
 
 ## Usage
-
 Requirements:
 
 ```text
@@ -82,7 +82,6 @@ datasets numpy pandas ranger21 rdkit scikit_learn selfies torch tqdm transformer
 ```
 
 - See `demo_usage.ipynb` or download it to use (I am still learning abt HF API so please be patient.)
-  - model weights can be fetched [here](https://huggingface.co/gbyuvd/ChemMiniQ3-SAbRLo) if not automatically downloaded locally
 - For training, clone this repo:
   - Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
@@ -245,3 +244,17 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
       year={2021},
       journal={arXiv preprint arXiv:2106.13731},
 }
+```
+
+### Durrant's Lab Filtering
+```
+@article{ropp2019gypsum,
+  title={Gypsum-DL: An Open-source Program for Preparing Small-molecule Libraries for Structure-based Virtual Screening},
+  author={Ropp, Patrick J. and Spiegel, Jacob O. and Walker, Jennifer L. and Green, Harrison and Morales, Guillermo A. and Milliken, Katherine A. and Ringe, John J. and Durrant, Jacob D.},
+  journal={Journal of Cheminformatics},
+  volume={11},
+  number={1},
+  year={2019},
+  doi={10.1186/s13321-019-0358-3}
+}
+```
