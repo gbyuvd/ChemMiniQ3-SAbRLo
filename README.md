@@ -1,6 +1,5 @@
 
 # 🧬 ChemMiniQ3-SAbRLo (Synthetic Accessibility with Bioaware RL — Optimized)
-
 ChemMiniQ3-SAbRLo is a lightweight experimental generative model for chemistry, built on mini **Qwen3**, designed for **rapid prototyping of HuggingFace `AutoModel` and `AutoTokenizer` compatibility**, and **fast iteration of Multi-Token Prediction (MTP) and RL fine-tuning algorithms/rewards**.
 
 It introduces a **new reinforcement learning framework** as the next iteration of [ChemMiniQ3-HoriFIE](https://huggingface.co/gbyuvd/ChemMiniQ3-HoriFIE), combining:
@@ -8,13 +7,15 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - 🧩 **Synthetic Accessibility (SA) Rewards** — guiding generation with a classifier (`gbyuvd/synthaccess-chemselfies`) to favor molecules that are easier to synthesize.  
 - 🔄 **Cyclical Gradual Generation** — a curriculum learning strategy that **gradually increases molecule length up to 25 tokens**, then **resets and repeats**, enabling faster RL convergence and stable prototyping.
 
-*Prototype research code — not production-ready. Built for speed, not scale - yet.*
+The model can be trained on a laptop with only 2GB VRAM (NVIDIA 930M in my case), for NTP+MTP it took ~2h:40m per chunk and for RL it took ~45m for 4500 steps;
 
 Example of a generated molecule, found no identical mol in PubChem
 
 `O=C(O)CC=1CCCCC=1C2=CC=CC(=C2)NC(=O)CC3=CC=CC=C3CCC`
 
 ![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/-etV70JXkUe1G7Sy1n12z.png)
+
+*Prototype research code — not production-ready. Built for speed, not scale - yet.*
 
 ---
 
