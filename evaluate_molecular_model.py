@@ -24,7 +24,7 @@ from FastChemTokenizerHF import FastChemTokenizerSelfies
 from ChemQ3MTP import ChemQ3MTPForCausalLM
 
 # ----------------------------
-# Robust Conversion & Validation (as per your spec)
+# Robust Conversion & Validation
 # ----------------------------
 
 def selfies_to_smiles(selfies_str: str) -> Optional[str]:
@@ -322,4 +322,5 @@ if __name__ == "__main__":
         train_data_path=args.train_data,
         n_samples=args.n_samples,
         seed=args.seed
+
     )
