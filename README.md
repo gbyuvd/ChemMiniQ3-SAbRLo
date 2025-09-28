@@ -88,10 +88,9 @@ Example of a generated molecule, found no identical mol in PubChem
 using `evaluate_molecular_model.py`:
 
 ```text
-🔍 SA Score Analysis (first 100 molecules):
-  Unique SA scores: 100
-  Min SA score: 0.001
-  Max SA score: 0.997
+🔍 SA Label Analysis (first 100 molecules):
+  Easy to synthesize: 87/100 (87%)
+  Hard to synthesize: 13/100 (13%)
 
 =======================================================
 📊 MOLECULAR GENERATION EVALUATION SUMMARY
@@ -103,7 +102,7 @@ Samples Generated: 1000
 Validity         : 0.9990 (999/1000)
 Uniqueness       : 0.9990 (unique valid)
 Novelty (vs train): 0.9870 (space-free SELFIES)
-Avg. SA Score    : 0.096 (ChemFIE-SA; lower = better)
+Synthesis Labels : Easy: 922/998 (92.4%) | Hard: 76/998 (7.6%)
 Internal Diversity: 0.8744 (1 - avg Tanimoto)
 =======================================================
 ```
