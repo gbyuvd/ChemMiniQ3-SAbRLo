@@ -74,6 +74,12 @@ Example of a generated molecule, found no identical mol in PubChem
 
 ## Usage
 
+Requirements:
+
+```text
+datasets numpy pandas ranger21 rdkit scikit_learn selfies torch tqdm transformers
+```
+
 - See `demo_usage.ipynb` or download it to use (I am still learning abt HF API so please be patient.)
   - model weights can be fetched [here](https://huggingface.co/gbyuvd/ChemMiniQ3-SAbRLo) if not automatically downloaded locally
 - For training, clone this repo:
