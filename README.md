@@ -128,7 +128,7 @@ Internal Diversity: 0.8741 (1 - avg Tanimoto)
 ### RL-Mixed 9000 steps (Unadjusted Rewards Mixing+Ratio)
 using the updated `evaluate_molecular_model.py` tested against chunk-4 data:
 
-It appears lower in certain metrics but generate longer and more complex examples:
+This serves as an important baseline before further adjusting the ratio of rewards; It appears lower in certain metrics but generate longer and more complex examples:
 
 ![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/tbFag3m35JK1SYPeBd5zV.png)
 
