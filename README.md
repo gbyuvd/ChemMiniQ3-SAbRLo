@@ -125,7 +125,37 @@ Synthesis Labels : Easy: 886/961 (92.2%) | Hard: 75/961 (7.8%)
 Internal Diversity: 0.8741 (1 - avg Tanimoto)
 =======================================================
 ```
+### RL-Mixed 9000 steps (Unadjusted Rewards Mixing+Ratio)
+using the updated `evaluate_molecular_model.py` tested against chunk-4 data:
 
+It appears lower in certain metrics but generate longer and more complex examples:
+
+![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/tbFag3m35JK1SYPeBd5zV.png)
+
+```
+  Raw SELFIES : [C] [C] [=N] [O] [C] [=C] [Ring1] [Branch1] [C] [=Branch1] [C] [=O] [N] [C@@H1] ...
+  SMILES      : CC1=NOC=C1C(=O)N[C@@H1]2C(N)C3=CC=CC=C3CC2
+  SA Label    : Easy (confidence: 0.999)
+  Atoms       : 20
+  Bonds       : 22
+🔍 SA Label Analysis (first 100 molecules):
+  Easy to synthesize: 71/100 (71%)
+  Hard to synthesize: 29/100 (29%)
+
+=======================================================
+📊 MOLECULAR GENERATION EVALUATION SUMMARY
+=======================================================
+Model Path       : ./checkpoints-1/model_step_9000
+Generation Mode  : MTP-aware
+Samples Generated: 1000
+-------------------------------------------------------
+Validity         : 0.9510 (951/1000)
+Uniqueness       : 1.0000 (unique valid)
+Novelty (vs train): 0.9989 (space-free SELFIES)
+Synthesis Labels : Easy: 633/951 (66.6%) | Hard: 318/951 (33.4%)
+Internal Diversity: 0.8934 (1 - avg Tanimoto)
+=======================================================
+```
 
 ## 🔮 Planned Experiments & Next Steps
 
