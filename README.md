@@ -118,11 +118,11 @@ Model Path       : ./chunk-4
 Generation Mode  : MTP-aware
 Samples Generated: 1000
 -------------------------------------------------------
-Validity         : 0.9990 (999/1000)
+Validity         : 0.9620 (962/1000)
 Uniqueness       : 0.9990 (unique valid)
-Novelty (vs train): 0.9870 (space-free SELFIES)
-Synthesis Labels : Easy: 922/998 (92.4%) | Hard: 76/998 (7.6%)
-Internal Diversity: 0.8744 (1 - avg Tanimoto)
+Novelty (vs train): 0.9865 (space-free SELFIES)
+Synthesis Labels : Easy: 886/961 (92.2%) | Hard: 75/961 (7.8%)
+Internal Diversity: 0.8741 (1 - avg Tanimoto)
 =======================================================
 ```
 
