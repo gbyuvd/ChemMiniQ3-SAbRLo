@@ -8,7 +8,7 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - 🧩 **Synthetic Accessibility (SA) Rewards** — guiding generation with a classifier (`gbyuvd/synthaccess-chemselfies`) to favor molecules that are easier to synthesize.  
 - 🔄 **Cyclical Gradual Generation** — a curriculum learning strategy that **gradually increases molecule length up to 25 tokens**, then **resets and repeats**, enabling faster RL convergence and stable prototyping.
 
-The model can be trained on a laptop with only 2GB VRAM (NVIDIA 930M in my case), for NTP+MTP it took ~2h:40m per chunk and for RL it took ~45m for 4500 steps;
+The model can be trained on a laptop with only 2GB VRAM (NVIDIA 930M in my case), for NTP+MTP it took ~2h:40m per chunk and for RL it took ~1h for 4500 steps;
 
 Example of a generated molecule, found no identical mol in PubChem
 
