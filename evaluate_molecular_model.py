@@ -1,4 +1,5 @@
 # evaluate_molecular_model.py
+# now with Durrant's lab filtering in validity check
 import os
 import sys
 import json
@@ -35,12 +36,98 @@ def selfies_to_smiles(selfies_str: str) -> Optional[str]:
     except Exception:
         return None
 
+
 def is_valid_smiles(smiles: str) -> bool:
-    """Check if a SMILES string represents a valid molecule."""
+    """
+    Check if a SMILES string represents a valid molecule.
+    FIXED: Now properly checks for heavy atoms (non-hydrogens) >= 3
+    and rejects disconnected/separated molecules
+    """
     if not isinstance(smiles, str) or len(smiles.strip()) == 0:
         return False
-    mol = Chem.MolFromSmiles(smiles.strip())
-    return mol is not None
+    
+    smiles = smiles.strip()
+    
+    # FAST CHECK: Reject separated molecules (contains dots)
+    if '.' in smiles:
+        return False  # Disconnected components indicated by dots
+    
+    try:
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            return False
+        
+        # CRITICAL FIX: Check heavy atoms (non-hydrogens), not total atoms
+        heavy_atoms = mol.GetNumHeavyAtoms()  # This excludes hydrogens
+        if heavy_atoms < 3:
+            return False
+            
+        return True
+    except Exception:
+        return False
+
+def passes_durrant_lab_filter(smiles: str) -> bool:
+    """
+    Apply Durrant's lab filter to remove improbable substructures.
+    FIXED: More robust error handling, pattern checking, and disconnected molecule rejection.
+    Returns True if molecule passes the filter (is acceptable), False otherwise.
+    """
+    if not smiles or not isinstance(smiles, str) or len(smiles.strip()) == 0:
+        return False
+    
+    try:
+        mol = Chem.MolFromSmiles(smiles.strip())
+        if mol is None:
+            return False
+        
+        # Check heavy atoms again (belt and suspenders approach)
+        if mol.GetNumHeavyAtoms() < 3:
+            return False
+        
+        # REJECT SEPARATED/DISCONNECTED MOLECULES (double check here too)
+        fragments = Chem.rdmolops.GetMolFrags(mol, asMols=False)
+        if len(fragments) > 1:
+            return False  # Reject molecules with multiple disconnected parts
+        
+        # Define SMARTS patterns for problematic substructures
+        problematic_patterns = [
+            "C=[N-]",                    # Carbon double bonded to negative nitrogen
+            "[N-]C=[N+]",               # Nitrogen anion bonded to nitrogen cation
+            "[nH+]c[n-]",               # Aromatic nitrogen cation adjacent to nitrogen anion
+            "[#7+]~[#7+]",              # Positive nitrogen connected to positive nitrogen
+            "[#7-]~[#7-]",              # Negative nitrogen connected to negative nitrogen
+            "[!#7]~[#7+]~[#7-]~[!#7]",  # Bridge: non-nitrogen - pos nitrogen - neg nitrogen - non-nitrogen
+            "[#5]",                     # Boron atoms
+            "O=[PH](=O)([#8])([#8])",   # Phosphoryl with hydroxyls
+            "N=c1cc[#7]c[#7]1",         # Nitrogen in aromatic ring with another nitrogen
+            "[$([NX2H1]),$([NX3H2])]=C[$([OH]),$([O-])]", # N=CH-OH or N=CH-O-
+        ]
+        
+        # Check for metals (excluding common biologically relevant ions)
+        metal_exclusions = {11, 12, 19, 20}  # Na, Mg, K, Ca
+        for atom in mol.GetAtoms():
+            atomic_num = atom.GetAtomicNum()
+            # More precise metal detection
+            if atomic_num > 20 and atomic_num not in metal_exclusions:
+                return False
+        
+        # Check for each problematic pattern
+        for pattern in problematic_patterns:
+            try:
+                patt_mol = Chem.MolFromSmarts(pattern)
+                if patt_mol is not None:
+                    matches = mol.GetSubstructMatches(patt_mol)
+                    if matches:
+                        return False  # Found problematic substructure
+            except Exception:
+                # If SMARTS parsing fails, continue to next pattern
+                continue
+        
+        return True  # Passed all checks
+        
+    except Exception:
+        return False
+
 
 def get_sa_label_and_confidence(selfies_str: str) -> tuple[str, float]:
     """Get SA label (Easy/Hard) and confidence from the model's SA classifier."""
@@ -179,7 +266,7 @@ def evaluate_model(
         # Convert to SMILES
         smiles = selfies_to_smiles(clean_selfies)
         
-        if smiles and is_valid_smiles(smiles):
+        if smiles is not None and is_valid_smiles(smiles) and passes_durrant_lab_filter(smiles):
             valid_records.append({
                 "raw_selfies": raw_selfies,
                 "selfies_clean": clean_selfies,
