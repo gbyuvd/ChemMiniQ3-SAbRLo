@@ -170,7 +170,6 @@ using the updated `evaluate_molecular_model.py` tested against chunk-4 data:
 Example 1:
   Raw SELFIES : [C] [C] [=N] [O] [C] [Branch2] [Ring1] [Branch1] [C@H1] [Branch1] [C] [C] [N] [C...
   SMILES      : C1C=NOC([C@H1](C)NC(=O)CNCC(F)(F)F)=N1
-Device set to use cuda:0
   SA Label    : Easy (confidence: 0.999)
   Atoms       : 18
   Bonds       : 18
@@ -230,14 +229,13 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
   - [x] Chunk VI; lr 7e-6 & disable warmdown (not included, overfitting perplexity=~3)
 - [x] Publish complete pretraining on HF
 - [x] Warm up PPO-RL with only Bioaware set on for 4500 steps
-- [x] Test and observe the stability of Mixed Rewards for 4500 steps
-- [ ] Warm up PPO-RL with only SA set on for 7000 steps
+- [x] Test and observe the stability of Mixed Rewards for 9000 steps
+- **[ongoing]** Warm up PPO-RL with ParetoControlled `Mix` set on for 9000 steps
 - [ ] Complete RL fine-tuning on verified rewards system.
 - [ ] Upload both warm-up MTP and PPO-RL models to HF repo
 - [x] Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
 - [ ] Ablation studies
 - **[ongoing]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
-
 
 ---
 
