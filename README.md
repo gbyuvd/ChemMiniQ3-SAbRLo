@@ -84,8 +84,9 @@ datasets numpy pandas ranger21 rdkit scikit_learn selfies torch tqdm transformer
 ```
 
 - See `demo_usage.ipynb` or download it to use (I am still learning abt HF API so please be patient.)
-- For training, clone this repo:
+- For training, clone this repo, feel free to adjust the model loading and params:
   - Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
+  - Run `train_ppokl_withpareto.py` for ParetoController adjusted rewards ratio/mixing
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
 - PPO-KL steps checkpoints available, it was trained using combined rewards `mix`
 - Dataset for training NTP/MTP can be fetched [here](https://huggingface.co/datasets/gbyuvd/sabrlo-chem-selfies-training)
