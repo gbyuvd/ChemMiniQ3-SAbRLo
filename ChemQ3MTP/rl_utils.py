@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 from typing import List, Union, Optional, Tuple, Dict, Any
 import numpy as np
-from collections import Counter
+from collections import Counter, deque
 
 # Chemistry imports
 from rdkit import Chem
@@ -173,6 +173,7 @@ def compute_sa_reward(selfies_str: str) -> float:
             return -result["score"]  # penalize "Hard"
     except Exception:
         return 0.0
+    
 
 # ========================
 # MOLECULAR REWARD COMPONENTS
@@ -327,7 +328,6 @@ def compute_lipinski_reward(mol) -> float:
 def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
     """
     Compute comprehensive reward for a SELFIES string.
-    FIXED: Uses corrected validity checking pipeline.
     
     Args:
         selfies_str: SELFIES representation of molecule
@@ -337,7 +337,7 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
     """
     smiles = selfies_to_smiles(selfies_str)
     
-    # Check validity with the fixed pipeline
+    # Check validity first
     is_valid = (smiles is not None and 
                 is_valid_smiles(smiles) and 
                 passes_durrant_lab_filter(smiles))
@@ -376,7 +376,7 @@ def compute_comprehensive_reward(selfies_str: str) -> Dict[str, float]:
         rewards["total"] = weighted_sum / sum(weights.values())
 
     return rewards
-
+    
 def selfies_to_lipinski_reward(selfies_str: str) -> float:
     """Convert SELFIES to SMILES, then compute Lipinski reward."""
     smiles = selfies_to_smiles(selfies_str)
@@ -384,6 +384,258 @@ def selfies_to_lipinski_reward(selfies_str: str) -> float:
         return 0.0
     mol = Chem.MolFromSmiles(smiles)
     return compute_lipinski_reward(mol)
+
+# ========================
+# PARETO-STYLE DYNAMIC REWARD CONTROLLER
+# ========================
+
+class ParetoRewardController:
+    """
+    Dynamic reward mixing based on Pareto optimality principles.
+    Adapts reward weights based on current population performance.
+    """
+    
+    def __init__(
+        self,
+        objectives: List[str] = None,
+        history_size: int = 500,
+        adaptation_rate: float = 0.1,
+        min_weight: float = 0.05,
+        max_weight: float = 0.95,
+        pareto_pressure: float = 1.0,
+        exploration_phase_length: int = 100
+    ):
+        """
+        Args:
+            objectives: List of objective names to track
+            history_size: Size of rolling history for Pareto analysis
+            adaptation_rate: How quickly weights adapt (0-1)
+            min_weight: Minimum weight for any objective
+            max_weight: Maximum weight for any objective  
+            pareto_pressure: Higher = more aggressive toward Pareto front
+            exploration_phase_length: Steps of pure exploration before adaptation
+        """
+        self.objectives = objectives or ["total", "sa", "validity", "diversity"]
+        self.history_size = history_size
+        self.adaptation_rate = adaptation_rate
+        self.min_weight = min_weight
+        self.max_weight = max_weight
+        self.pareto_pressure = pareto_pressure
+        self.exploration_phase_length = exploration_phase_length
+        
+        # Initialize weights equally
+        n_objectives = len(self.objectives)
+        self.weights = {obj: 1.0/n_objectives for obj in self.objectives}
+        
+        # History tracking
+        self.objective_history = deque(maxlen=history_size)
+        self.pareto_history = deque(maxlen=100)  # Track Pareto front evolution
+        self.step_count = 0
+        
+        # Performance tracking
+        self.objective_trends = {obj: deque(maxlen=50) for obj in self.objectives}
+        self.stagnation_counters = {obj: 0 for obj in self.objectives}
+        
+    def update(self, batch_objectives: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        """
+        Update weights based on current batch performance.
+        
+        Args:
+            batch_objectives: Dict of objective_name -> tensor of scores
+            
+        Returns:
+            Updated weights dictionary
+        """
+        self.step_count += 1
+        
+        # Convert to numpy for easier manipulation
+        batch_data = {}
+        for obj_name, tensor_vals in batch_objectives.items():
+            if obj_name in self.objectives:
+                batch_data[obj_name] = tensor_vals.detach().cpu().numpy()
+        
+        # Store in history
+        if len(batch_data) > 0:
+            batch_size = len(batch_data[next(iter(batch_data))])
+            for i in range(batch_size):
+                point = {obj: batch_data[obj][i] for obj in self.objectives if obj in batch_data}
+                if len(point) == len(self.objectives):  # Only store complete points
+                    self.objective_history.append(point)
+        
+        # Skip adaptation during exploration phase
+        if self.step_count <= self.exploration_phase_length:
+            return self.weights.copy()
+        
+        # Compute current Pareto front
+        current_front = self._compute_pareto_front()
+        if len(current_front) > 0:
+            self.pareto_history.append(len(current_front))
+        
+        # Adapt weights based on multiple criteria
+        self._adapt_weights_pareto_driven(batch_data)
+        self._adapt_weights_stagnation_driven(batch_data)
+        self._adapt_weights_diversity_driven()
+        
+        # Ensure constraints
+        self._normalize_weights()
+        
+        return self.weights.copy()
+    
+    def _compute_pareto_front(self) -> List[Dict[str, float]]:
+        """Compute current Pareto front from history."""
+        if len(self.objective_history) < 10:
+            return []
+        
+        points = list(self.objective_history)
+        pareto_front = []
+        
+        for i, point1 in enumerate(points):
+            is_dominated = False
+            for j, point2 in enumerate(points):
+                if i != j and self._dominates(point2, point1):
+                    is_dominated = True
+                    break
+            if not is_dominated:
+                pareto_front.append(point1)
+        
+        return pareto_front
+    
+    def _dominates(self, point1: Dict[str, float], point2: Dict[str, float]) -> bool:
+        """Check if point1 dominates point2 (higher is better for all objectives)."""
+        better_in_all = True
+        strictly_better_in_one = False
+        
+        for obj in self.objectives:
+            if obj in point1 and obj in point2:
+                if point1[obj] < point2[obj]:
+                    better_in_all = False
+                    break
+                elif point1[obj] > point2[obj]:
+                    strictly_better_in_one = True
+        
+        return better_in_all and strictly_better_in_one
+    
+    def _adapt_weights_pareto_driven(self, batch_data: Dict[str, np.ndarray]):
+        """Adapt weights based on distance to Pareto front."""
+        if len(self.objective_history) < 50:
+            return
+        
+        pareto_front = self._compute_pareto_front()
+        if len(pareto_front) == 0:
+            return
+        
+        # Compute average distance to Pareto front for each objective
+        obj_distances = {obj: [] for obj in self.objectives}
+        
+        for point in list(self.objective_history)[-100:]:  # Recent history
+            min_distance = float('inf')
+            closest_front_point = None
+            
+            for front_point in pareto_front:
+                distance = sum((point[obj] - front_point[obj])**2 
+                             for obj in self.objectives if obj in point and obj in front_point)
+                if distance < min_distance:
+                    min_distance = distance
+                    closest_front_point = front_point
+            
+            if closest_front_point:
+                for obj in self.objectives:
+                    if obj in point and obj in closest_front_point:
+                        obj_distances[obj].append(abs(point[obj] - closest_front_point[obj]))
+        
+        # Increase weight for objectives with larger gaps to Pareto front
+        for obj in self.objectives:
+            if obj_distances[obj]:
+                avg_distance = np.mean(obj_distances[obj])
+                # Higher distance = increase weight
+                weight_adjustment = avg_distance * self.adaptation_rate * self.pareto_pressure
+                self.weights[obj] = self.weights[obj] * (1 + weight_adjustment)
+    
+    def _adapt_weights_stagnation_driven(self, batch_data: Dict[str, np.ndarray]):
+        """Increase weights for stagnating objectives."""
+        for obj in self.objectives:
+            if obj in batch_data:
+                current_mean = np.mean(batch_data[obj])
+                self.objective_trends[obj].append(current_mean)
+                
+                if len(self.objective_trends[obj]) >= 20:
+                    recent_trend = np.array(list(self.objective_trends[obj])[-20:])
+                    # Check for stagnation (low variance)
+                    if np.std(recent_trend) < 0.01:  # Adjust threshold as needed
+                        self.stagnation_counters[obj] += 1
+                        # Boost weight for stagnating objectives
+                        boost = min(0.1, self.stagnation_counters[obj] * 0.02)
+                        self.weights[obj] += boost
+                    else:
+                        self.stagnation_counters[obj] = max(0, self.stagnation_counters[obj] - 1)
+    
+    def _adapt_weights_diversity_driven(self):
+        """Adapt weights based on Pareto front diversity."""
+        if len(self.pareto_history) < 10:
+            return
+        
+        recent_front_sizes = list(self.pareto_history)[-10:]
+        front_diversity = np.std(recent_front_sizes)
+        
+        # If diversity is low, boost exploration objectives
+        if front_diversity < 1.0:  # Adjust threshold
+            exploration_objectives = ["sa", "diversity"]  # Objectives that promote exploration
+            for obj in exploration_objectives:
+                if obj in self.weights:
+                    self.weights[obj] += 0.05 * self.adaptation_rate
+    
+    def _normalize_weights(self):
+        """Ensure weights are normalized and within bounds."""
+        # Apply bounds
+        for obj in self.weights:
+            self.weights[obj] = np.clip(self.weights[obj], self.min_weight, self.max_weight)
+        
+        # Normalize to sum to 1
+        total = sum(self.weights.values())
+        if total > 0:
+            for obj in self.weights:
+                self.weights[obj] /= total
+        else:
+            # Fallback to equal weights
+            n = len(self.weights)
+            for obj in self.weights:
+                self.weights[obj] = 1.0 / n
+
+    def get_mixed_reward(self, rewards_dict: Dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Compute mixed reward using current weights.
+        
+        Args:
+            rewards_dict: Dictionary of reward tensors
+            
+        Returns:
+            Mixed reward tensor
+        """
+        mixed_reward = None
+        
+        for obj_name, weight in self.weights.items():
+            if obj_name in rewards_dict:
+                weighted_reward = weight * rewards_dict[obj_name]
+                if mixed_reward is None:
+                    mixed_reward = weighted_reward
+                else:
+                    mixed_reward += weighted_reward
+        
+        return mixed_reward if mixed_reward is not None else torch.zeros_like(list(rewards_dict.values())[0])
+    
+    def get_status(self) -> Dict[str, any]:
+        """Get current status for logging."""
+        pareto_front = self._compute_pareto_front()
+        
+        return {
+            "weights": self.weights.copy(),
+            "step_count": self.step_count,
+            "pareto_front_size": len(pareto_front),
+            "stagnation_counters": self.stagnation_counters.copy(),
+            "history_size": len(self.objective_history),
+            "avg_pareto_size": np.mean(list(self.pareto_history)) if self.pareto_history else 0
+        }
+
 
 # ========================
 # RL TRAINING CONTROLLERS
@@ -589,6 +841,107 @@ def compute_entropy_bonus(action_probs: torch.Tensor) -> torch.Tensor:
 # BATCH REWARD COMPUTATION
 # ========================
 
+def batch_compute_rewards_pareto(
+    selfies_list: List[str],
+    reward_mode: str = "mix",
+    reward_mix: float = 0.5,
+    pareto_controller: Optional[ParetoRewardController] = None
+) -> Dict[str, torch.Tensor]:
+    """
+    Drop-in replacement for batch_compute_rewards with Pareto support.
+    
+    Args:
+        selfies_list: List of SELFIES strings  
+        reward_mode: "chemq3", "sa", "mix", or "pareto" 
+        reward_mix: Weight for comprehensive rewards when mixing (0-1)
+        pareto_controller: ParetoRewardController instance for "pareto" mode
+        
+    Returns:
+        Dictionary containing reward tensors (same format as original)
+    """
+    batch_size = len(selfies_list)
+    
+    validity_vals = []
+    lipinski_vals = []
+    total_rewards = []
+    sa_rewards = []
+
+    # Compute all individual rewards
+    for selfies_str in selfies_list:
+        smiles = selfies_to_smiles(selfies_str)
+        
+        # Check validity comprehensively  
+        is_valid = (smiles is not None and 
+                   is_valid_smiles(smiles) and 
+                   passes_durrant_lab_filter(smiles))
+        
+        if reward_mode in ["chemq3", "mix", "pareto"]:
+            r = compute_comprehensive_reward(selfies_str)
+            validity_vals.append(r.get('validity', 0.0))
+            lipinski_vals.append(r.get('lipinski', 0.0))
+
+        if reward_mode in ["sa", "mix", "pareto"]:
+            sa = compute_sa_reward(selfies_str) if is_valid else 0.0
+            sa_rewards.append(sa)
+
+        # Store individual comprehensive reward for pareto mode
+        if reward_mode in ["chemq3", "pareto"]:
+            total_rewards.append(r.get('total', 0.0))
+        elif reward_mode == "sa":
+            total_rewards.append(sa)
+        elif reward_mode == "mix":
+            r_total = r.get("total", 0.0) if 'r' in locals() else 0.0
+            sa_val = sa if 'sa' in locals() else 0.0
+            mixed = reward_mix * r_total + (1.0 - reward_mix) * sa_val
+            total_rewards.append(mixed)
+
+    # Convert to tensors
+    result = {
+        "total_rewards": torch.tensor(total_rewards, dtype=torch.float32),
+    }
+    
+    if validity_vals:
+        result["validity_rewards"] = torch.tensor(validity_vals, dtype=torch.float32)
+    if lipinski_vals:
+        result["lipinski_rewards"] = torch.tensor(lipinski_vals, dtype=torch.float32)
+    if sa_rewards:
+        result["sa_rewards"] = torch.tensor(sa_rewards, dtype=torch.float32)
+    
+    # Compute diversity reward
+    valid_smiles = []
+    for selfies_str in selfies_list:
+        smiles = selfies_to_smiles(selfies_str)
+        if smiles and is_valid_smiles(smiles) and passes_durrant_lab_filter(smiles):
+            valid_smiles.append(smiles)
+    
+    diversity_score = len(set(valid_smiles)) / max(1, len(valid_smiles))
+    result["diversity_rewards"] = torch.full((batch_size,), diversity_score, dtype=torch.float32)
+    
+    # Apply Pareto mixing if requested
+    if reward_mode == "pareto" and pareto_controller is not None:
+        # Prepare objectives for controller update
+        batch_objectives = {
+            "total": result["total_rewards"],
+            "validity": result.get("validity_rewards", torch.zeros(batch_size)),
+            "diversity": result["diversity_rewards"]
+        }
+        
+        if "sa_rewards" in result:
+            batch_objectives["sa"] = result["sa_rewards"]
+        
+        # Update controller and get new weights
+        updated_weights = pareto_controller.update(batch_objectives)
+        
+        # Compute mixed reward using adaptive weights
+        mixed_reward = pareto_controller.get_mixed_reward(batch_objectives)
+        result["total_rewards"] = mixed_reward
+        
+        # Store weights for logging
+        result["pareto_weights"] = updated_weights
+
+    return result
+
+# Legacy
 def batch_compute_rewards(
     selfies_list: List[str],
     reward_mode: str = "chemq3",
@@ -713,4 +1066,5 @@ def compute_training_metrics(
     # Add loss components
     metrics.update(loss_dict)
     
+
     return metrics
