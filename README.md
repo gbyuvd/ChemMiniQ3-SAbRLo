@@ -8,7 +8,7 @@ It introduces a **new reinforcement learning framework** as the next iteration o
 - 🧩 **Synthetic Accessibility (SA) Rewards** — guiding generation with a classifier (`gbyuvd/synthaccess-chemselfies`) to favor molecules that are easier to synthesize.  
 - 🔄 **Cyclical Gradual Generation** — a curriculum learning strategy that **gradually increases molecule length up to 25 tokens**, then **resets and repeats**, enabling faster RL convergence and stable prototyping.
 
-The model can be trained on a laptop with only 2GB VRAM (NVIDIA 930M in my case), for NTP+MTP it took ~2h:40m per chunk and for RL it took ~1h for 4500 steps;
+The model can be trained on a laptop with only 2GB VRAM (NVIDIA 930M in my case), for NTP+MTP it took ~2h:40m per chunk and for RL (`mix`) it took ~1h for 4500 steps; and for ParetoControlled RL with `mix` took around 1h:40m
 
 Example of a generated molecule, found no identical mol in PubChem
 
@@ -28,6 +28,8 @@ Example of a generated molecule, found no identical mol in PubChem
 - ✅ **Ranger21 Optimizer** – Warmup/warmdown scheduling for stable training  
 - ✅ **Gradient Checkpointing & Streaming Dataset Loader** – Lightweight, hardware-friendly, optimized for rapid RL prototyping  
 - ✅ **Durrant's Lab Filter** – Integrated substructure filtering based on [gypsum_dl](https://github.com/durrantlab/gypsum_dl/) (Ropp _et al._ 2019) methodology to remove improbable molecular variants in validity check
+- ✅ Pareto Reward Controller – Dynamic multi-objective optimization balancing validity, synthesizability, and molecular complexity with adaptive weight adjustment
+
 
 
 ---
