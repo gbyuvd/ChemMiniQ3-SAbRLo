@@ -85,6 +85,7 @@ datasets numpy pandas ranger21 rdkit scikit_learn selfies torch tqdm transformer
 - For training, clone this repo:
   - Customize config.json, run `train_withmtp.py` for NTP-to-MTP training
   - Run `train_ppokl_withsa.py` with either "chemq3" (bioaware-only no SA), "sa" (SA-only no bioaware), or "mix" (combined rewards)
+- PPO-KL steps checkpoints available, it was trained using combined rewards `mix`
 - Dataset for training NTP/MTP can be fetched [here](https://huggingface.co/datasets/gbyuvd/sabrlo-chem-selfies-training)
 
 ## ⚙️ Model Eval
@@ -161,12 +162,12 @@ Every bit of support helps us push ChemMiniQ3-SAbRLo further! 🚀🧬
   - [x] Chunk V (not included, overfitting perplexity=~3)
   - [x] Chunk VI; lr 7e-6 & disable warmdown (not included, overfitting perplexity=~3)
 - [x] Publish complete pretraining on HF
-- **[ongoing]** Warm up PPO-RL with only Bioaware set on for 4500 steps
-- [ ] Test and observe the stability of Mixed Rewards for 4500 steps
+- [x] Warm up PPO-RL with only Bioaware set on for 4500 steps
+- [x] Test and observe the stability of Mixed Rewards for 4500 steps
 - [ ] Warm up PPO-RL with only SA set on for 7000 steps
 - [ ] Complete RL fine-tuning on verified rewards system.
 - [ ] Upload both warm-up MTP and PPO-RL models to HF repo
-- **[ongoing]** Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
+- [x] Write demo blocks and demo JupyterNotebook on training from scratch and how to generate using pretrained model(s) 
 - [ ] Ablation studies
 - **[ongoing]** Implement and validate HF `AutoModel` and `AutoTokenizer` compatibility
 
