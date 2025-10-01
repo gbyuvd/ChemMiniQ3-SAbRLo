@@ -1,7 +1,7 @@
 
 # 🧬 ChemMiniQ3-SAbRLo (Synthetic Accessibility with Bioaware RL — Optimized)
 
-ChemMiniQ3-SAbRLo is a lightweight experimental generative model for chemistry, built on mini **Qwen3**, designed for **rapid prototyping of HuggingFace `AutoModel` and `AutoTokenizer` compatibility**, and **fast iteration of Multi-Token Prediction (MTP) and RL fine-tuning algorithms/rewards**.
+ChemMiniQ3-SAbRLo is a lightweight experimental generative model for chemistry, built on mini **Qwen2-like backbone**, designed for **rapid prototyping of HuggingFace `AutoModel` and `AutoTokenizer` compatibility**, and **fast iteration of Multi-Token Prediction (MTP) and RL fine-tuning algorithms/rewards**.
 
 It introduces a **new reinforcement learning framework** as the next iteration of [ChemMiniQ3-HoriFIE](https://huggingface.co/gbyuvd/ChemMiniQ3-HoriFIE), combining:
 
@@ -21,7 +21,7 @@ Example of a generated molecule, found no identical mol in PubChem
 ---
 
 ## ⚙️ Core Features
-- ✅ **Qwen3 Mini Backbone** – Efficient causal LM architecture, compatible with `transformers.AutoModelForCausalLM`  
+- ✅ **Qwen2-like Mini Backbone** – Efficient causal LM architecture, compatible with `transformers.AutoModelForCausalLM`  
 - ✅ **Multi-Token Prediction (MTP Head)** – Parallel prediction of 1–3 future tokens, implemented as a plug-and-play head compatible with `AutoModel`  
 - ✅ **Horizon Loss** – Weighted multi-horizon objectives for long-term coherence  
 - ✅ **SELFIES-native Tokenizer** – Robust encoding with [FastChemTokenizer](https://github.com/gbyuvd/FastChemTokenizer)  
