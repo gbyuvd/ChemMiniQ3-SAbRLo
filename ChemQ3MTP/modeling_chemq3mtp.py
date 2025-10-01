@@ -375,6 +375,12 @@ class ChemQ3MTPForCausalLM(Qwen2ForCausalLM):
     ) -> Tuple[List[str], torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """
         Generate sequences with log probabilities for RL training.
+        
+        FIXED VERSION: Corrects log probability calculation to avoid numerical issues.
+        Changes:
+        1. Use log_softmax instead of log(softmax) to avoid log(0) issues
+        2. Correct the gather operation for non-sampling case
+        3. Handle the case where filtered logits become -inf properly
         """
         self.eval()
         device = input_ids.device
@@ -411,15 +417,19 @@ class ChemQ3MTPForCausalLM(Qwen2ForCausalLM):
                     mask[..., 0] = False
                     logits[mask.scatter(1, sorted_indices, mask)] = float("-inf")
 
+                # FIX: Calculate log probabilities using log_softmax for numerical stability
+                log_probs = F.log_softmax(logits, dim=-1)
                 probs = F.softmax(logits, dim=-1)
 
                 if do_sample:
                     dist = Categorical(probs)
                     next_token = dist.sample()
-                    log_p = dist.log_prob(next_token)
+                    # FIX: Get log prob directly from log_probs tensor
+                    log_p = torch.gather(log_probs, 1, next_token.unsqueeze(1)).squeeze(1)
                 else:
                     next_token = torch.argmax(probs, dim=-1)
-                    log_p = torch.log(torch.gather(probs, 1, next_token.unsqueeze(1))).squeeze(1)
+                    # FIX: Use log_probs instead of log(probs) to avoid numerical issues
+                    log_p = torch.gather(log_probs, 1, next_token.unsqueeze(1)).squeeze(1)
 
                 generated_tokens.append(next_token.unsqueeze(1))
                 generated_logprobs.append(log_p.unsqueeze(1))
