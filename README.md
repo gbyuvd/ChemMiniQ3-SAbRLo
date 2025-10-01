@@ -16,7 +16,9 @@ Example of a generated molecule, found no identical mol in PubChem
 
 ![image](https://cdn-uploads.huggingface.co/production/uploads/667da868d653c0b02d6a2399/-etV70JXkUe1G7Sy1n12z.png)
 
-*Prototype research code — not production-ready. Built for speed, not scale - yet.*
+### Disclaimer: For Academic Purposes Only
+The information and model provided is for academic purposes only. It is intended for educational and research use, and should not be used for any commercial or legal purposes. The author do not guarantee the accuracy, completeness, or reliability of the information.
+
 
 ---
 
